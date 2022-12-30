@@ -1,0 +1,16 @@
+[package]
+name = "jupiter-invariant"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+solana-sdk = "1.10.41"
+solana-client = "1.10.41"
+anyhow = "1.0"
+spl-token = { version = "3.3.1", features = ["no-entrypoint"] }
+spl-token-swap = { version = "3.0.0", features = ["no-entrypoint"] }
+anchor-lang = "0.25.0"
+jupiter-core = { git = "https://github.com/jup-ag/rust-amm-implementation.git", branch = "main" }
+jupiter = { git = "https://github.com/jup-ag/rust-amm-implementation.git", branch = "main" }
