@@ -14,3 +14,4 @@ spl-token-swap = { version = "3.0.0", features = ["no-entrypoint"] }
 anchor-lang = "0.25.0"
 jupiter-core = { git = "https://github.com/jup-ag/rust-amm-implementation.git", branch = "main" }
 jupiter = { git = "https://github.com/jup-ag/rust-amm-implementation.git", branch = "main" }
+invariant = {git = "https://github.com/invariant-labs/protocol.git", branch = "master"}
