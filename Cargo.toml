@@ -9,9 +9,9 @@ edition = "2021"
 solana-sdk = "1.10.41"
 solana-client = "1.10.41"
 anyhow = "1.0"
-spl-token = { version = "3.3.1", features = ["no-entrypoint"] }
-spl-token-swap = { version = "3.0.0", features = ["no-entrypoint"] }
-anchor-lang = "0.25.0"
+
 jupiter-core = { git = "https://github.com/jup-ag/rust-amm-implementation.git", branch = "main" }
 jupiter = { git = "https://github.com/jup-ag/rust-amm-implementation.git", branch = "main" }
-invariant = {git = "https://github.com/invariant-labs/protocol.git", branch = "master"}
+invariant-types = { git = "https://github.com/invariant-labs/protocol.git", branch = "create-invariant-types" }
+decimal = { git = "https://github.com/invariant-labs/protocol.git", branch = "create-invariant-types" }
+anchor-lang = "0.25.0"
