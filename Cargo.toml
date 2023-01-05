@@ -15,3 +15,4 @@ jupiter = { git = "https://github.com/jup-ag/rust-amm-implementation.git", branc
 invariant-types = { git = "https://github.com/invariant-labs/protocol.git", branch = "create-invariant-types" }
 decimal = { git = "https://github.com/invariant-labs/protocol.git", branch = "create-invariant-types" }
 anchor-lang = "0.25.0"
+borsh = {version = "*", features = ["const-generics"]}
