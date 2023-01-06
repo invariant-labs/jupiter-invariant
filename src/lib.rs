@@ -30,12 +30,21 @@ impl JupiterInvariant {
         })
     }
 
+    fn extract_from_anchor_account(data: &[u8]) -> &[u8] {
+        data.split_at(ANCHOR_DISCRIMINATOR_SIZE).1
+    }
+
+    // fn deserialize<T>(data: &[u8]) -> T {
+    //     T::try_from_slice(extract_from_anchor_account(data))
+    // }
+
+    // TODO: Add generic paramter
     fn deserialize_pool(data: &[u8]) -> Pool {
-        Pool::try_from_slice(data.split_at(ANCHOR_DISCRIMINATOR_SIZE).1).unwrap()
+        Pool::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 
     fn deserialize_tickmap(data: &[u8]) -> Tickmap {
-        Tickmap::try_from_slice(data.split_at(ANCHOR_DISCRIMINATOR_SIZE).1).unwrap()
+        Tickmap::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 }
 
