@@ -34,18 +34,20 @@ impl JupiterInvariant {
         data.split_at(ANCHOR_DISCRIMINATOR_SIZE).1
     }
 
-    // fn deserialize<T>(data: &[u8]) -> T {
-    //     T::try_from_slice(extract_from_anchor_account(data))
-    // }
+    fn deserialize<T>(data: &[u8]) -> T
+        where T: AnchorDeserialize
+    {
+        T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
+    }
 
     // TODO: Add generic paramter
-    fn deserialize_pool(data: &[u8]) -> Pool {
-        Pool::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
-    }
-
-    fn deserialize_tickmap(data: &[u8]) -> Tickmap {
-        Tickmap::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
-    }
+    // fn deserialize_pool(data: &[u8]) -> Pool {
+    //     Pool::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
+    // }
+    //
+    // fn deserialize_tickmap(data: &[u8]) -> Tickmap {
+    //     Tickmap::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
+    // }
 }
 
 impl Amm for JupiterInvariant {
@@ -70,6 +72,8 @@ impl Amm for JupiterInvariant {
         let market_account_data: &[u8] = accounts_map.get(&self.market_key).unwrap();
         let tickmap_account_data: &[u8] = accounts_map.get(&self.pool.tickmap).unwrap();
         let pool = Self::deserialize_pool(market_account_data);
+        // let pool = Self::deserialize<Pool>(market_account_data);
+
         let tickmap = Self::deserialize_tickmap(tickmap_account_data);
 
         self.pool = pool;
