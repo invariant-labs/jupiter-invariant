@@ -5,6 +5,7 @@ use jupiter_core::amm::{
 use std::collections::HashMap;
 use invariant_types::structs::{Pool, Tickmap};
 use anchor_lang::AnchorDeserialize;
+use anyhow::Error;
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
 
@@ -14,6 +15,11 @@ pub struct JupiterInvariant {
     label: String,
     pool: Pool,
     tickmap: Tickmap,
+}
+
+enum PriceDirection {
+    UP,
+    DOWN,
 }
 
 impl JupiterInvariant {
@@ -38,6 +44,17 @@ impl JupiterInvariant {
         where T: AnchorDeserialize
     {
         T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
+    }
+
+    fn find_closest_tick_indexes(self: Self, amount_limit: u64, direction: PriceDirection) -> &[u64] {
+        let current = self.pool.current_tick_index;
+        let tick_spacing = self.pool.tick_spacing;
+
+        if current % tick_spacing !== 0 {
+
+        }
+
+        let find: Vec<i32> = Vec::new();
     }
 }
 
