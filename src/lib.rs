@@ -46,15 +46,38 @@ impl JupiterInvariant {
         T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 
-    fn find_closest_tick_indexes(self: Self, amount_limit: u64, direction: PriceDirection) -> &[u64] {
+    // TICKMAP BYTE SIZE = 11_091
+    // TICK LIMIT = 44_364
+    // MAX_TICK = 221_818
+    fn find_closest_tick_indexes(self: Self, amount_limit: usize, direction: PriceDirection) -> &[u64] {
         let current = self.pool.current_tick_index;
         let tick_spacing = self.pool.tick_spacing;
+        let tickmap = self.tickmap.bitmap;
 
-        if current % tick_spacing !== 0 {
+        if current % tick_spacing != 0 {
+            panic!("Invalid arguments: can't find initialized ticks")
+        }
+        let mut found: Vec<i32> = Vec::new();
+        let current_index = current / tick_spacing;
+        let above = current_index + 1;
+        let below = current_index;
 
+
+        while found.len() < amount_limit {
+            match direction {
+                PriceDirection::UP => {
+                    let value_above = tickmap.get(above / 8) & (1 << (above % 8));
+                    if value_above != 0 {
+                        found.push(above);
+                    }
+
+
+                }
+                PriceDirection::DOWN => {}
+            }
         }
 
-        let find: Vec<i32> = Vec::new();
+        &found
     }
 }
 
