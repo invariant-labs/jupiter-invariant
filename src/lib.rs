@@ -12,13 +12,13 @@ pub const TICK_LIMIT: i32 = 44364;
 pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
 pub const TICK_CROSSES_PER_IX: usize = 19;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct JupiterInvariant {
     market_key: Pubkey,
     label: String,
     pool: Pool,
     tickmap: Tickmap,
-    ticks: HashMap<Pubkey, Tick>
+    ticks: HashMap<Pubkey, Tick>,
 }
 
 enum PriceDirection {
@@ -45,14 +45,14 @@ impl JupiterInvariant {
     }
 
     fn deserialize<T>(data: &[u8]) -> T
-    where
-        T: AnchorDeserialize,
+        where
+            T: AnchorDeserialize,
     {
         T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 
     fn find_closest_tick_indexes(
-        self: Self,
+        &self,
         amount_limit: usize,
         direction: PriceDirection,
     ) -> Vec<i32> {
@@ -94,7 +94,7 @@ impl JupiterInvariant {
         found
     }
 
-    fn tick_indexes_to_addresses(self: Self, indexes: &[i32]) -> Vec<Pubkey> {
+    fn tick_indexes_to_addresses(&self, indexes: &[i32]) -> Vec<Pubkey> {
         let pubkeys: Vec<Pubkey> = indexes
             .iter()
             .map(|i| {
@@ -105,19 +105,23 @@ impl JupiterInvariant {
                 pubkey
             })
             .collect();
-
         pubkeys
     }
 
-    fn get_ticks_addresses_around(self: &Self) -> &[Pubkey] {
+    fn get_ticks_addresses_around(&self) -> Vec<Pubkey> {
         let above_addresses = self
-            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP).as_slice();
+            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
 
         let below_addresses = self
-            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN).as_slice();
+            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN);
 
-        let indexes = [above_addresses, below_addresses].concat().as_slice();
-        self.tick_indexes_to_addresses(indexes).as_slice()
+        // below_addresses.extend(&above_addresses);
+        let all_indexes = [below_addresses, above_addresses].concat();
+
+        self.tick_indexes_to_addresses(&all_indexes)
+
+        // let indexes = [above_addresses, below_addresses].concat().as_slice();
+        // self.tick_indexes_to_addresses(indexes)
     }
 }
 
@@ -138,7 +142,12 @@ impl Amm for JupiterInvariant {
         let ticks_addresses = self.get_ticks_addresses_around();
         let mut result = vec![self.market_key, self.pool.tickmap];
         result.extend(ticks_addresses);
-        self.tick_addresses = result.clone();
+        // let new_ticks = ticks_addresses.iter().map(|pkey| self.ticks.get(pkey).unwrap_or_default()).collect::<HashMap<Pubkey, Tick>>();
+
+        // let new_ticks = ticks_addresses.iter().map(|pkey| self.ticks.entry(pkey.clone()).or_insert(Tick::default())).collect::<HashMap<Pubkey, Tick>>();
+        // let new_ticks = ticks_addresses.iter().map(|pkey| self.ticks.get(pkey).unwrap_or(&Tick::default())).collect::<HashMap<Pubkey, Tick>>();
+
+
         result
     }
 
@@ -148,17 +157,22 @@ impl Amm for JupiterInvariant {
         let pool = Self::deserialize::<Pool>(market_account_data);
         let tickmap = Self::deserialize::<Tickmap>(tickmap_account_data);
 
+        let ticks = accounts_map.into_iter()
+        .filter(|(key, _)| !self.market_key.eq(key) && !self.pool.tickmap.eq(key))
+        .collect::<HashMap<&Pubkey, &Vec<u8>>>().into_iter().map(|(key, data)| {
+            let tick = Self::deserialize::<Tick>(data);
+            (*key, tick)
+        }).collect::<HashMap<Pubkey, Tick>>();
+
+        self.ticks = ticks;
         self.pool = pool;
         self.tickmap = tickmap;
-        self.ticks.iter().for_each(|(pkey, tick)| {
-            let tick_account_data: &[u8] = accounts_map.get(pkey).unwrap();
-            let tick = Self::deserialize::<Tick>(tick_account_data);
-            self.ticks.insert(pkey, tick)
-        });
 
         Ok(())
     }
+
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
+        let _todo = quote_params;
         todo!()
     }
 
@@ -166,11 +180,12 @@ impl Amm for JupiterInvariant {
         &self,
         swap_params: &SwapParams,
     ) -> anyhow::Result<SwapLegAndAccountMetas> {
+        let _todo = swap_params;
         todo!()
     }
 
     fn clone_amm(&self) -> Box<dyn Amm + Send + Sync> {
-        todo!()
+        Box::new(self.clone())
     }
 }
 

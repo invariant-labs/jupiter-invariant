@@ -1103,7 +1103,7 @@ checksum = "23d8666cb01533c39dde32bcbab8e227b4ed6679b2c925eba05feabea39508fb"
 [[package]]
 name = "decimal"
 version = "0.1.0"
-source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#39f5c2d7e58eca443ef8f84e98afb54643b0ba93"
+source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#5c40f4a705c76a601bfda66e32b86f9dadf95dac"
 dependencies = [
  "decimal_core",
  "integer-sqrt",
@@ -1114,7 +1114,7 @@ dependencies = [
 [[package]]
 name = "decimal_core"
 version = "0.1.0"
-source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#39f5c2d7e58eca443ef8f84e98afb54643b0ba93"
+source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#5c40f4a705c76a601bfda66e32b86f9dadf95dac"
 dependencies = [
  "proc-macro2 1.0.49",
  "quote 1.0.23",
@@ -1824,7 +1824,7 @@ dependencies = [
 [[package]]
 name = "invariant-types"
 version = "0.1.0"
-source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#39f5c2d7e58eca443ef8f84e98afb54643b0ba93"
+source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#5c40f4a705c76a601bfda66e32b86f9dadf95dac"
 dependencies = [
  "anchor-lang",
  "borsh 0.9.3",
@@ -2400,6 +2400,12 @@ dependencies = [
  "spki",
  "zeroize",
 ]
+
+[[package]]
+name = "pkg-config"
+version = "0.3.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ac9a59f73473f1b8d852421e59e64809f025994837ef743615c6d0c5b305160"
 
 [[package]]
 name = "polyval"
@@ -4602,10 +4608,11 @@ dependencies = [
 
 [[package]]
 name = "zstd-sys"
-version = "2.0.4+zstd.1.5.2"
+version = "2.0.5+zstd.1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fa202f2ef00074143e219d15b62ffc317d17cc33909feac471c044087cad7b0"
+checksum = "edc50ffce891ad571e9f9afe5039c4837bede781ac4bb13052ed7ae695518596"
 dependencies = [
  "cc",
  "libc",
+ "pkg-config",
 ]
