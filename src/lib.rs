@@ -4,10 +4,11 @@ use jupiter_core::amm::{
 };
 use std::collections::HashMap;
 use invariant_types::structs::{Pool, Tickmap};
-use anchor_lang::AnchorDeserialize;
+use anchor_lang::{AnchorDeserialize, Key};
 use anyhow::Error;
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
+pub const TICK_LIMIT: i32 = 44364;
 
 #[derive(Clone, Debug, Default)]
 pub struct JupiterInvariant {
@@ -46,9 +47,6 @@ impl JupiterInvariant {
         T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 
-    // TICKMAP BYTE SIZE = 11_091
-    // TICK LIMIT = 44_364
-    // MAX_TICK = 221_818
     fn find_closest_tick_indexes(self: Self, amount_limit: usize, direction: PriceDirection) -> &[u64] {
         let current = self.pool.current_tick_index;
         let tick_spacing = self.pool.tick_spacing;
@@ -59,26 +57,42 @@ impl JupiterInvariant {
         }
         let mut found: Vec<i32> = Vec::new();
         let current_index = current / tick_spacing;
-        let above = current_index + 1;
-        let below = current_index;
+        let mut above = current_index + 1;
+        let mut below = current_index;
+        let mut reached = false;
 
-
-        while found.len() < amount_limit {
+        while !reached && found.len() < amount_limit {
             match direction {
                 PriceDirection::UP => {
                     let value_above = tickmap.get(above / 8) & (1 << (above % 8));
                     if value_above != 0 {
                         found.push(above);
                     }
-
-
+                    reached = above >= 2 * TICK_LIMIT;
+                    above += 1;
                 }
-                PriceDirection::DOWN => {}
+                PriceDirection::DOWN => {
+                    let value_below = tickmap.get(below / 8) & (1 << (below % 8));
+                    if value_below != 0 {
+                        found.insert(0, above);
+                    }
+                    reached = below <= 0;
+                    below -= 1;
+                }
             }
         }
-
         &found
     }
+
+    // fn tick_indexes_to_addresses(self: Self, indexes: &[u64]) -> &[Pubkey] {
+    //     invariant_types
+    //
+    //     // Pubkey::find_program_address(
+    //     //     &[b"tickv1",
+    //     //         self.market_key.key().as_ref(),
+    //     //         indexes[0].to_le_bytes()],
+    //     // )
+    // }
 }
 
 impl Amm for JupiterInvariant {
@@ -110,7 +124,6 @@ impl Amm for JupiterInvariant {
 
         Ok(())
     }
-
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
         todo!()
     }
