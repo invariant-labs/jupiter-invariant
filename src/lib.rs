@@ -6,9 +6,11 @@ use jupiter_core::amm::{
 };
 use solana_sdk::pubkey;
 use std::collections::HashMap;
+use solana_client::rpc_client::RpcClient;
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
 pub const TICK_LIMIT: i32 = 44364;
+pub const TICKMAP_SIZE: i32 = 2 * TICK_LIMIT - 1;
 pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
 pub const TICK_CROSSES_PER_IX: usize = 19;
 
@@ -51,6 +53,20 @@ impl JupiterInvariant {
         T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 
+    fn fetch_accounts_map(rpc: &RpcClient, accounts_to_update: Vec<Pubkey>) -> HashMap<Pubkey, Vec<u8>> {
+        rpc
+            .get_multiple_accounts(&accounts_to_update)
+            .unwrap()
+            .iter()
+            .enumerate()
+            .fold(HashMap::new(), |mut m, (index, account)| {
+                if let Some(account) = account {
+                    m.insert(accounts_to_update[index], account.data.clone());
+                }
+                m
+            })
+    }
+
     fn find_closest_tick_indexes(
         &self,
         amount_limit: usize,
@@ -67,26 +83,36 @@ impl JupiterInvariant {
         let current_index = current.checked_div(tick_spacing).unwrap();
         let mut above = current_index.checked_add(1).unwrap();
         let mut below = current_index;
-        let mut reached = false;
+        let mut reached_limit = false;
 
-        while !reached && found.len() < amount_limit {
+        // println!("len of tickmap = {:?}", tickmap.len());
+        while !reached_limit && found.len() < amount_limit {
             match direction {
                 PriceDirection::UP => {
+                    // if above / 8 > 11089 {
+                    //     println!("index = {:?}", above / 8);
+                    //     println!("above = {:?}", above);
+                    //     println!("2 * TICK_LIMIT = {:?}", 2 * TICK_LIMIT);
+                    // }
                     let value_above: u8 =
                         *tickmap.get((above / 8) as usize).unwrap() & (1 << (above % 8));
                     if value_above != 0 {
                         found.push(above);
                     }
-                    reached = above >= 2 * TICK_LIMIT;
+                    reached_limit = above >= TICKMAP_SIZE;
                     above += 1;
                 }
                 PriceDirection::DOWN => {
+                    // if below / 8 < 2 {
+                    //     println!("index = {:?}", below / 8);
+                    //     println!("above = {:?}", below);
+                    // }
                     let value_below: u8 =
                         *tickmap.get((below / 8) as usize).unwrap() & (1 << (below % 8));
                     if value_below != 0 {
-                        found.insert(0, above);
+                        found.insert(0, below);
                     }
-                    reached = below <= 0;
+                    reached_limit = below <= 0;
                     below -= 1;
                 }
             }
@@ -109,19 +135,21 @@ impl JupiterInvariant {
     }
 
     fn get_ticks_addresses_around(&self) -> Vec<Pubkey> {
+        // self.tickmap.bitmap.iter().for_each(|b| {
+        //     if *b != 0 {
+        //         println!("find non-zero byte");
+        //     }
+        // });
         let above_addresses = self
             .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
+        // println!("above: {:?}", above_addresses);
 
         let below_addresses = self
             .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN);
+        // println!("below: {:?}", below_addresses);
 
-        // below_addresses.extend(&above_addresses);
         let all_indexes = [below_addresses, above_addresses].concat();
-
         self.tick_indexes_to_addresses(&all_indexes)
-
-        // let indexes = [above_addresses, below_addresses].concat().as_slice();
-        // self.tick_indexes_to_addresses(indexes)
     }
 }
 
@@ -139,16 +167,9 @@ impl Amm for JupiterInvariant {
     }
 
     fn get_accounts_to_update(&self) -> Vec<Pubkey> {
-        let ticks_addresses = self.get_ticks_addresses_around();
-        let mut result = vec![self.market_key, self.pool.tickmap];
-        result.extend(ticks_addresses);
-        // let new_ticks = ticks_addresses.iter().map(|pkey| self.ticks.get(pkey).unwrap_or_default()).collect::<HashMap<Pubkey, Tick>>();
-
-        // let new_ticks = ticks_addresses.iter().map(|pkey| self.ticks.entry(pkey.clone()).or_insert(Tick::default())).collect::<HashMap<Pubkey, Tick>>();
-        // let new_ticks = ticks_addresses.iter().map(|pkey| self.ticks.get(pkey).unwrap_or(&Tick::default())).collect::<HashMap<Pubkey, Tick>>();
-
-
-        result
+        let mut ticks_addresses = self.get_ticks_addresses_around();
+        ticks_addresses.extend([self.market_key, self.pool.tickmap]);
+        ticks_addresses
     }
 
     fn update(&mut self, accounts_map: &HashMap<Pubkey, Vec<u8>>) -> anyhow::Result<()> {
@@ -220,22 +241,15 @@ mod tests {
         let mut jupiter_invariant =
             JupiterInvariant::new_from_keyed_account(&market_account).unwrap();
 
-        // get accounts
+        // get accounts to update
         let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-
         // get data from accounts
-        let accounts_map = rpc
-            .get_multiple_accounts(&accounts_to_update)
-            .unwrap()
-            .iter()
-            .enumerate()
-            .fold(HashMap::new(), |mut m, (index, account)| {
-                if let Some(account) = account {
-                    m.insert(accounts_to_update[index], account.data.clone());
-                }
-                m
-            });
+        let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
+        // update state
+        jupiter_invariant.update(&accounts_map).unwrap();
 
+        let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+        let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
         jupiter_invariant.update(&accounts_map).unwrap();
     }
 }
