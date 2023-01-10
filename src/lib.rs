@@ -1,21 +1,24 @@
 use anchor_lang::prelude::Pubkey;
+use anchor_lang::{AnchorDeserialize, Key};
+use invariant_types::structs::{Pool, Tickmap};
 use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
 };
+use solana_sdk::pubkey;
 use std::collections::HashMap;
-use invariant_types::structs::{Pool, Tickmap};
-use anchor_lang::{AnchorDeserialize, Key};
-use anyhow::Error;
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
 pub const TICK_LIMIT: i32 = 44364;
+pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
+pub const TICK_CROSSES_PER_IX: usize = 19;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct JupiterInvariant {
     market_key: Pubkey,
     label: String,
     pool: Pool,
     tickmap: Tickmap,
+    tick_addresses: Vec<Pubkey>,
 }
 
 enum PriceDirection {
@@ -42,29 +45,35 @@ impl JupiterInvariant {
     }
 
     fn deserialize<T>(data: &[u8]) -> T
-        where T: AnchorDeserialize
+    where
+        T: AnchorDeserialize,
     {
         T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 
-    fn find_closest_tick_indexes(self: Self, amount_limit: usize, direction: PriceDirection) -> &[u64] {
-        let current = self.pool.current_tick_index;
-        let tick_spacing = self.pool.tick_spacing;
+    fn find_closest_tick_indexes(
+        self: Self,
+        amount_limit: usize,
+        direction: PriceDirection,
+    ) -> Vec<i32> {
+        let current: i32 = self.pool.current_tick_index;
+        let tick_spacing: i32 = self.pool.tick_spacing.into();
         let tickmap = self.tickmap.bitmap;
 
         if current % tick_spacing != 0 {
             panic!("Invalid arguments: can't find initialized ticks")
         }
         let mut found: Vec<i32> = Vec::new();
-        let current_index = current / tick_spacing;
-        let mut above = current_index + 1;
+        let current_index = current.checked_div(tick_spacing).unwrap();
+        let mut above = current_index.checked_add(1).unwrap();
         let mut below = current_index;
         let mut reached = false;
 
         while !reached && found.len() < amount_limit {
             match direction {
                 PriceDirection::UP => {
-                    let value_above = tickmap.get(above / 8) & (1 << (above % 8));
+                    let value_above: u8 =
+                        *tickmap.get((above / 8) as usize).unwrap() & (1 << (above % 8));
                     if value_above != 0 {
                         found.push(above);
                     }
@@ -72,7 +81,8 @@ impl JupiterInvariant {
                     above += 1;
                 }
                 PriceDirection::DOWN => {
-                    let value_below = tickmap.get(below / 8) & (1 << (below % 8));
+                    let value_below: u8 =
+                        *tickmap.get((below / 8) as usize).unwrap() & (1 << (below % 8));
                     if value_below != 0 {
                         found.insert(0, above);
                     }
@@ -81,18 +91,47 @@ impl JupiterInvariant {
                 }
             }
         }
-        &found
+        found
     }
 
-    // fn tick_indexes_to_addresses(self: Self, indexes: &[u64]) -> &[Pubkey] {
-    //     invariant_types
-    //
-    //     // Pubkey::find_program_address(
-    //     //     &[b"tickv1",
-    //     //         self.market_key.key().as_ref(),
-    //     //         indexes[0].to_le_bytes()],
-    //     // )
-    // }
+    fn tick_indexes_to_addresses(self: Self, indexes: &[i32]) -> Vec<Pubkey> {
+        let pubkeys: Vec<Pubkey> = indexes
+            .iter()
+            .map(|i| {
+                let (pubkey, _) = Pubkey::find_program_address(
+                    &[b"tickv1", self.market_key.key().as_ref(), &i.to_le_bytes()],
+                    &PROGRAM_ID,
+                );
+                pubkey
+            })
+            .collect();
+
+        pubkeys
+
+        // indexes.map();
+        //
+        // let (tick_address, _) = Pubkey::find_program_address(
+        //     &[b"tickv1",
+        //         self.market_key.key().as_ref(),
+        //         indexes[0].to_le_bytes()],
+        //     *PROGRAM_ID,
+        // );
+    }
+
+    fn get_ticks_addresses_around(self: &Self) -> &[Pubkey] {
+        self.find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
+
+        let above_addresses = self
+            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP)
+            .as_slice();
+
+        let below_addresses = self
+            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN)
+            .as_slice();
+
+        let indexes = [above_addresses, below_addresses].concat().as_slice();
+        self.tick_indexes_to_addresses(indexes).as_slice()
+    }
 }
 
 impl Amm for JupiterInvariant {
@@ -109,8 +148,10 @@ impl Amm for JupiterInvariant {
     }
 
     fn get_accounts_to_update(&self) -> Vec<Pubkey> {
-        // ticks addresses from tickmap
-        vec![self.market_key, self.pool.tickmap]
+        let ticks_addresses = self.get_ticks_addresses_around();
+        let mut result = vec![self.market_key, self.pool.tickmap];
+        result.extend(ticks_addresses);
+        result
     }
 
     fn update(&mut self, accounts_map: &HashMap<Pubkey, Vec<u8>>) -> anyhow::Result<()> {
@@ -143,15 +184,14 @@ impl Amm for JupiterInvariant {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
     use anchor_lang::prelude::Pubkey;
+    use anchor_lang::{AnchorDeserialize, AnchorSerialize};
+    use decimal::*;
     use invariant_types::decimals::FixedPoint;
     use invariant_types::structs::{FeeTier, Pool};
     use solana_client::rpc_client::RpcClient;
     use solana_sdk::account::Account;
     use solana_sdk::pubkey;
-    use anchor_lang::{AnchorSerialize, AnchorDeserialize};
-    use decimal::*;
 
     #[test]
     fn test_jupiter_invariant() {
@@ -169,7 +209,8 @@ mod tests {
         };
 
         // create
-        let mut jupiter_invariant = JupiterInvariant::new_from_keyed_account(&market_account).unwrap();
+        let mut jupiter_invariant =
+            JupiterInvariant::new_from_keyed_account(&market_account).unwrap();
 
         // get accounts
         let accounts_to_update = jupiter_invariant.get_accounts_to_update();
@@ -189,7 +230,6 @@ mod tests {
 
         jupiter_invariant.update(&accounts_map).unwrap();
     }
-
 
     // #[test]
     // fn test_deserialize_fee_tier() {
