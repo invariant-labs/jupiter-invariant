@@ -1,6 +1,6 @@
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::{AnchorDeserialize, Key};
-use invariant_types::structs::{Pool, Tickmap};
+use invariant_types::structs::{Pool, Tick, Tickmap};
 use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
 };
@@ -18,7 +18,7 @@ pub struct JupiterInvariant {
     label: String,
     pool: Pool,
     tickmap: Tickmap,
-    tick_addresses: Vec<Pubkey>,
+    ticks: HashMap<Pubkey, Tick>
 }
 
 enum PriceDirection {
@@ -107,27 +107,14 @@ impl JupiterInvariant {
             .collect();
 
         pubkeys
-
-        // indexes.map();
-        //
-        // let (tick_address, _) = Pubkey::find_program_address(
-        //     &[b"tickv1",
-        //         self.market_key.key().as_ref(),
-        //         indexes[0].to_le_bytes()],
-        //     *PROGRAM_ID,
-        // );
     }
 
     fn get_ticks_addresses_around(self: &Self) -> &[Pubkey] {
-        self.find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
-
         let above_addresses = self
-            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP)
-            .as_slice();
+            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP).as_slice();
 
         let below_addresses = self
-            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN)
-            .as_slice();
+            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN).as_slice();
 
         let indexes = [above_addresses, below_addresses].concat().as_slice();
         self.tick_indexes_to_addresses(indexes).as_slice()
@@ -136,21 +123,22 @@ impl JupiterInvariant {
 
 impl Amm for JupiterInvariant {
     fn label(&self) -> String {
-        todo!()
+        self.label.clone()
     }
 
     fn key(&self) -> Pubkey {
-        todo!()
+        self.market_key
     }
 
     fn get_reserve_mints(&self) -> Vec<Pubkey> {
-        todo!()
+        vec![self.pool.token_x, self.pool.token_y]
     }
 
     fn get_accounts_to_update(&self) -> Vec<Pubkey> {
         let ticks_addresses = self.get_ticks_addresses_around();
         let mut result = vec![self.market_key, self.pool.tickmap];
         result.extend(ticks_addresses);
+        self.tick_addresses = result.clone();
         result
     }
 
@@ -162,6 +150,11 @@ impl Amm for JupiterInvariant {
 
         self.pool = pool;
         self.tickmap = tickmap;
+        self.ticks.iter().for_each(|(pkey, tick)| {
+            let tick_account_data: &[u8] = accounts_map.get(pkey).unwrap();
+            let tick = Self::deserialize::<Tick>(tick_account_data);
+            self.ticks.insert(pkey, tick)
+        });
 
         Ok(())
     }
@@ -230,16 +223,4 @@ mod tests {
 
         jupiter_invariant.update(&accounts_map).unwrap();
     }
-
-    // #[test]
-    // fn test_deserialize_fee_tier() {
-    //     const FEE_TIER_ADDRESS: Pubkey = pubkey!("EMuePmVq4YtAEoq1XZ9SVSSgUmAkWj25hLHSVghHA6GY");
-    //     let rpc = RpcClient::new("https://tame-ancient-mountain.solana-mainnet.quiknode.pro/6a9a95bf7bbb108aea620e7ee4c1fd5e1b67cc62");
-    //     let fee_tier_data: Account = rpc.get_account(&FEE_TIER_ADDRESS).unwrap();
-    //     println!("{:?}", fee_tier_data);
-    //
-    //     let extracted_data = fee_tier_data.data.split_at(8).1;
-    //     let fee_tier: FeeTier = FeeTier::try_from_slice(extracted_data).unwrap();
-    //     println!("fee_tier = {:?}", fee_tier);
-    // }
 }
