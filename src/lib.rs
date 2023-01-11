@@ -12,6 +12,7 @@ pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
 pub const TICK_LIMIT: i32 = 44364;
 pub const TICKMAP_SIZE: i32 = 2 * TICK_LIMIT - 1;
 pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
+// pub const PROGRAM_ID: Pubkey = pubkey!("9aiirQKPZ2peE9QrXYmsbTtR7wSDJi2HkQdHuaMpTpei"); // Devnet
 pub const TICK_CROSSES_PER_IX: usize = 19;
 
 #[derive(Clone, Default)]
@@ -80,7 +81,7 @@ impl JupiterInvariant {
             panic!("Invalid arguments: can't find initialized ticks")
         }
         let mut found: Vec<i32> = Vec::new();
-        let current_index = current.checked_div(tick_spacing).unwrap();
+        let current_index = current.checked_div(tick_spacing).unwrap().checked_add(TICK_LIMIT).unwrap();
         let mut above = current_index.checked_add(1).unwrap();
         let mut below = current_index;
         let mut reached_limit = false;
@@ -89,10 +90,10 @@ impl JupiterInvariant {
         while !reached_limit && found.len() < amount_limit {
             match direction {
                 PriceDirection::UP => {
-                    // if above / 8 > 11089 {
-                    //     println!("index = {:?}", above / 8);
-                    //     println!("above = {:?}", above);
-                    //     println!("2 * TICK_LIMIT = {:?}", 2 * TICK_LIMIT);
+                    // if above / 8 > 0 {
+                    // println!("index = {:?}", above / 8);
+                    // println!("above = {:?}", above);
+                    // println!("2 * TICK_LIMIT = {:?}", 2 * TICK_LIMIT);
                     // }
                     let value_above: u8 =
                         *tickmap.get((above / 8) as usize).unwrap() & (1 << (above % 8));
@@ -218,6 +219,7 @@ impl Amm for JupiterInvariant {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Rem;
     use std::str::FromStr;
 
     use super::*;
@@ -376,11 +378,10 @@ mod tests {
             "BWuHaUGmRKqGew1hffbCnfzkNNn4XLToyYp5zw8LiqSo",
             "EGLDBGNDaC1pr3iznmGDUSVLmFE8DGR1LruUHTwCFhhy",
         ];
-        println!("len = {:?}", pool_addresses.len());
-        let pubkeys: Vec<Pubkey> = pool_addresses.iter().map(|p| { return Pubkey::from_str(*p).unwrap() }).collect::<Vec<Pubkey>>();
-        // let a = &pubkeys[0..99];
+        // println!("len = {:?}", pool_addresses.len());
+        let pubkeys: Vec<Pubkey> = pool_addresses.iter().map(|p| { return Pubkey::from_str(*p).unwrap(); }).collect::<Vec<Pubkey>>();
 
-        rpc.get_multiple_accounts(&pubkeys[0..5]).unwrap().iter().enumerate().for_each(|(index, market_account)| {
+        rpc.get_multiple_accounts(&pubkeys[0..100]).unwrap().iter().enumerate().for_each(|(index, market_account)| {
             let key: Pubkey = pubkeys.get(index).unwrap().to_owned();
             let account = market_account.to_owned().unwrap();
             let mut jupiter_invariant =
@@ -396,6 +397,9 @@ mod tests {
             let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
             jupiter_invariant.update(&accounts_map).unwrap();
 
+            if jupiter_invariant.ticks.len() == 0 {
+                println!("fetched ticks array empty");
+            }
             jupiter_invariant.ticks.iter().for_each(|(_, tick)| {
                 println!("{:?}", tick);
             });
