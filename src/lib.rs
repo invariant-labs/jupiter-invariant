@@ -117,7 +117,12 @@ impl JupiterInvariant {
                 }
             }
         }
-        found
+
+        // translate index in tickmap to price tick index
+        found.iter().map(|i: &i32| {
+            let i = i.checked_sub(TICK_LIMIT).unwrap();
+            i.checked_mul(tick_spacing).unwrap()
+        }).collect()
     }
 
     fn tick_indexes_to_addresses(&self, indexes: &[i32]) -> Vec<Pubkey> {
@@ -149,6 +154,7 @@ impl JupiterInvariant {
         // println!("below: {:?}", below_addresses);
 
         let all_indexes = [below_addresses, above_addresses].concat();
+        // println!("all ticks indexes = {:?}", all_indexes);
         self.tick_indexes_to_addresses(&all_indexes)
     }
 }
@@ -251,5 +257,9 @@ mod tests {
         let accounts_to_update = jupiter_invariant.get_accounts_to_update();
         let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
         jupiter_invariant.update(&accounts_map).unwrap();
+
+        jupiter_invariant.ticks.iter().for_each(|(_, tick)| {
+            println!("{:?}", tick);
+        });
     }
 }
