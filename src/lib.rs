@@ -224,6 +224,7 @@ impl Amm for JupiterInvariant {
 
         let calculate_amount_out = || -> Result<u64, InvariantErrorCode> {
             while !remaining_amount.is_zero() {
+                // not_enough_liquidity if failed
                 let (swap_limit, limiting_tick) =
                     get_closer_limit(sqrt_price_limit, x_to_y, self.pool.current_tick_index, self.pool.tick_spacing, &self.tickmap).unwrap();
             }
@@ -238,7 +239,7 @@ impl Amm for JupiterInvariant {
                     ..Quote::default()
                 })
             }
-            Err(_rr) => {
+            Err(_err) => {
                 Ok(Quote {
                     not_enough_liquidity: true,
                     ..Quote::default()

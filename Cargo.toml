@@ -6,13 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-solana-sdk = "1.10.41"
-solana-client = "1.10.41"
+solana-sdk = "1.14.11"
+solana-client = "1.14.11"
 anyhow = "1.0"
 
 jupiter-core = { git = "https://github.com/jup-ag/rust-amm-implementation.git", branch = "main" }
 jupiter = { git = "https://github.com/jup-ag/rust-amm-implementation.git", branch = "main" }
 invariant-types = { git = "https://github.com/invariant-labs/protocol.git", branch = "create-invariant-types" }
 decimal = { git = "https://github.com/invariant-labs/protocol.git", branch = "create-invariant-types" }
-anchor-lang = "0.25.0"
+anchor-lang = "0.26.0"
 borsh = {version = "*", features = ["const-generics"]}
