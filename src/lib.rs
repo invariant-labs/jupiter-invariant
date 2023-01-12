@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::{AnchorDeserialize, Key};
 use invariant_types::structs::{Pool, Tick, Tickmap};
@@ -6,6 +7,9 @@ use jupiter_core::amm::{
 };
 use solana_sdk::pubkey;
 use std::collections::HashMap;
+use invariant_types::decimals::*;
+use invariant_types::errors::InvariantErrorCode;
+use invariant_types::math::get_closer_limit;
 use solana_client::rpc_client::RpcClient;
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
@@ -14,6 +18,8 @@ pub const TICKMAP_SIZE: i32 = 2 * TICK_LIMIT - 1;
 pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
 // pub const PROGRAM_ID: Pubkey = pubkey!("9aiirQKPZ2peE9QrXYmsbTtR7wSDJi2HkQdHuaMpTpei"); // Devnet
 pub const TICK_CROSSES_PER_IX: usize = 19;
+pub const MIN_PRICE: Price = Price { v: 15258932000000000000 };
+pub const MAX_PRICE: Price = Price { v: 65535383934512647000000000000 };
 
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
@@ -200,15 +206,52 @@ impl Amm for JupiterInvariant {
     }
 
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
-        let _todo = quote_params;
-        todo!()
+        // always by token_in
+        let QuoteParams {
+            in_amount,
+            input_mint,
+            output_mint,
+        } = *quote_params;
+        let x_to_y = quote_params.input_mint.eq(&self.pool.token_x);
+        let mut sqrt_price_limit = Price::new(if x_to_y {
+            MIN_PRICE
+        } else {
+            MAX_PRICE
+        }.v);
+
+        let remaining_amount = TokenAmount::new(in_amount);
+        let total_amount_out: TokenAmount = TokenAmount::new(0);
+
+        let calculate_amount_out = || -> Result<u64, InvariantErrorCode> {
+            while !remaining_amount.is_zero() {
+                let (swap_limit, limiting_tick) =
+                    get_closer_limit(sqrt_price_limit, x_to_y, self.pool.current_tick_index, self.pool.tick_spacing, &self.tickmap).unwrap();
+            }
+            Ok(10)
+        };
+
+        let result = calculate_amount_out();
+        match result {
+            Ok(out_amount) => {
+                Ok(Quote {
+                    out_amount,
+                    ..Quote::default()
+                })
+            }
+            Err(_rr) => {
+                Ok(Quote {
+                    not_enough_liquidity: true,
+                    ..Quote::default()
+                })
+            }
+        }
     }
 
     fn get_swap_leg_and_account_metas(
         &self,
         swap_params: &SwapParams,
     ) -> anyhow::Result<SwapLegAndAccountMetas> {
-        let _todo = swap_params;
+        let _ = swap_params;
         todo!()
     }
 
