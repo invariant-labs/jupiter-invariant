@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::{AnchorDeserialize, Key};
 use invariant_types::structs::{Pool, Tick, Tickmap};
@@ -9,7 +10,7 @@ use solana_sdk::pubkey;
 use std::collections::HashMap;
 use invariant_types::decimals::*;
 use invariant_types::errors::InvariantErrorCode;
-use invariant_types::math::get_closer_limit;
+use invariant_types::math::{compute_swap_step, get_closer_limit, SwapResult};
 use solana_client::rpc_client::RpcClient;
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
@@ -136,14 +137,18 @@ impl JupiterInvariant {
         let pubkeys: Vec<Pubkey> = indexes
             .iter()
             .map(|i| {
-                let (pubkey, _) = Pubkey::find_program_address(
-                    &[b"tickv1", self.market_key.key().as_ref(), &i.to_le_bytes()],
-                    &PROGRAM_ID,
-                );
-                pubkey
+                self.tick_index_to_address(*i)
             })
             .collect();
         pubkeys
+    }
+
+    fn tick_index_to_address(&self, i: i32) -> Pubkey {
+        let (pubkey, _) = Pubkey::find_program_address(
+            &[b"tickv1", self.market_key.key().as_ref(), &i.to_le_bytes()],
+            &PROGRAM_ID,
+        );
+        pubkey
     }
 
     fn get_ticks_addresses_around(&self) -> Vec<Pubkey> {
@@ -212,23 +217,82 @@ impl Amm for JupiterInvariant {
             input_mint,
             output_mint,
         } = *quote_params;
+        let by_amount_in = true;
         let x_to_y = quote_params.input_mint.eq(&self.pool.token_x);
-        let mut sqrt_price_limit = Price::new(if x_to_y {
-            MIN_PRICE
-        } else {
-            MAX_PRICE
-        }.v);
-
-        let remaining_amount = TokenAmount::new(in_amount);
-        let total_amount_out: TokenAmount = TokenAmount::new(0);
+        let mut sqrt_price_limit: Price = (if x_to_y { MIN_PRICE } else { MAX_PRICE }).clone();
 
         let calculate_amount_out = || -> Result<u64, InvariantErrorCode> {
+            let mut pool: RefCell<Pool> = RefCell::new(self.pool.clone());
+            let mut pool = pool.borrow_mut();
+            let mut remaining_amount = TokenAmount::new(in_amount);
+            let mut total_amount_in: TokenAmount = TokenAmount::new(0);
+            let mut total_amount_out: TokenAmount = TokenAmount::new(0);
             while !remaining_amount.is_zero() {
                 // not_enough_liquidity if failed
                 let (swap_limit, limiting_tick) =
-                    get_closer_limit(sqrt_price_limit, x_to_y, self.pool.current_tick_index, self.pool.tick_spacing, &self.tickmap).unwrap();
+                    get_closer_limit(sqrt_price_limit, x_to_y, pool.current_tick_index, pool.tick_spacing, &self.tickmap).unwrap();
+                let result: SwapResult = compute_swap_step(pool.sqrt_price, swap_limit, pool.liquidity, remaining_amount, by_amount_in, pool.fee);
+                remaining_amount -= result.amount_in + result.fee_amount;
+                pool.sqrt_price = result.next_price_sqrt;
+                total_amount_in += result.amount_in + result.fee_amount;
+                total_amount_out += result.amount_out;
+                // Fail if price would go over swap limit
+                if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
+                    return Err(InvariantErrorCode::PriceLimitReached.into());
+                }
+
+                // crossing tick
+                // trunk-ignore(clippy/unnecessary_unwrap)
+                // if result.next_price_sqrt == swap_limit && limiting_tick.is_some() {
+                //     let (tick_index, initialized) = limiting_tick.unwrap();
+                //
+                //     let is_enough_amount_to_cross = is_enough_amount_to_push_price(
+                //         remaining_amount,
+                //         result.next_price_sqrt,
+                //         pool.liquidity,
+                //         pool.fee,
+                //         by_amount_in,
+                //         x_to_y,
+                //     );
+                //
+                //     if initialized {
+                //         self::tick_indexes_to_addresses()
+                //         tick_index
+                //
+                //         let mut tick = loader.load_mut().unwrap();
+                //         self.ticks.get()
+                //
+                //
+                //         // crossing tick
+                //         if !x_to_y || is_enough_amount_to_cross {
+                //             cross_tick(&mut tick, &mut pool, get_current_timestamp())?;
+                //         } else if !remaining_amount.is_zero() {
+                //             if by_amount_in {
+                //                 pool.add_fee(remaining_amount, FixedPoint::from_integer(0), x_to_y);
+                //                 total_amount_in += remaining_amount;
+                //             }
+                //             remaining_amount = TokenAmount(0);
+                //         }
+                //     }
+                //     // set tick to limit (below if price is going down, because current tick should always be below price)
+                //     pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
+                //         tick_index.checked_sub(pool.tick_spacing as i32).unwrap()
+                //     } else {
+                //         tick_index
+                //     };
+                // } else {
+                //     assert!(
+                //         pool.current_tick_index
+                //             .checked_rem(pool.tick_spacing.into())
+                //             .unwrap()
+                //             == 0,
+                //         "tick not divisible by spacing"
+                //     );
+                //     pool.current_tick_index =
+                //         get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
+                // }
             }
-            Ok(10)
+            Ok(total_amount_out.0)
         };
 
         let result = calculate_amount_out();
