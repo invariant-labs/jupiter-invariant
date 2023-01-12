@@ -10,7 +10,7 @@ use solana_sdk::pubkey;
 use std::collections::HashMap;
 use invariant_types::decimals::*;
 use invariant_types::errors::InvariantErrorCode;
-use invariant_types::math::{compute_swap_step, get_closer_limit, SwapResult};
+use invariant_types::math::{compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
 use solana_client::rpc_client::RpcClient;
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
@@ -223,6 +223,8 @@ impl Amm for JupiterInvariant {
 
         let calculate_amount_out = || -> Result<u64, InvariantErrorCode> {
             let mut pool: RefCell<Pool> = RefCell::new(self.pool.clone());
+            let mut _ticks: RefCell<HashMap<Pubkey, Tick>> = RefCell::new(self.ticks.clone());
+            let mut _tickmap: RefCell<Tickmap> = RefCell::new(self.tickmap.clone());
             let mut pool = pool.borrow_mut();
             let mut remaining_amount = TokenAmount::new(in_amount);
             let mut total_amount_in: TokenAmount = TokenAmount::new(0);
@@ -243,54 +245,48 @@ impl Amm for JupiterInvariant {
 
                 // crossing tick
                 // trunk-ignore(clippy/unnecessary_unwrap)
-                // if result.next_price_sqrt == swap_limit && limiting_tick.is_some() {
-                //     let (tick_index, initialized) = limiting_tick.unwrap();
-                //
-                //     let is_enough_amount_to_cross = is_enough_amount_to_push_price(
-                //         remaining_amount,
-                //         result.next_price_sqrt,
-                //         pool.liquidity,
-                //         pool.fee,
-                //         by_amount_in,
-                //         x_to_y,
-                //     );
-                //
-                //     if initialized {
-                //         self::tick_indexes_to_addresses()
-                //         tick_index
-                //
-                //         let mut tick = loader.load_mut().unwrap();
-                //         self.ticks.get()
-                //
-                //
-                //         // crossing tick
-                //         if !x_to_y || is_enough_amount_to_cross {
-                //             cross_tick(&mut tick, &mut pool, get_current_timestamp())?;
-                //         } else if !remaining_amount.is_zero() {
-                //             if by_amount_in {
-                //                 pool.add_fee(remaining_amount, FixedPoint::from_integer(0), x_to_y);
-                //                 total_amount_in += remaining_amount;
-                //             }
-                //             remaining_amount = TokenAmount(0);
-                //         }
-                //     }
-                //     // set tick to limit (below if price is going down, because current tick should always be below price)
-                //     pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
-                //         tick_index.checked_sub(pool.tick_spacing as i32).unwrap()
-                //     } else {
-                //         tick_index
-                //     };
-                // } else {
-                //     assert!(
-                //         pool.current_tick_index
-                //             .checked_rem(pool.tick_spacing.into())
-                //             .unwrap()
-                //             == 0,
-                //         "tick not divisible by spacing"
-                //     );
-                //     pool.current_tick_index =
-                //         get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
-                // }
+                if result.next_price_sqrt == swap_limit && limiting_tick.is_some() {
+                    let (tick_index, initialized) = limiting_tick.unwrap();
+                    let is_enough_amount_to_cross = is_enough_amount_to_push_price(
+                        remaining_amount,
+                        result.next_price_sqrt,
+                        pool.liquidity,
+                        pool.fee,
+                        by_amount_in,
+                        x_to_y,
+                    );
+
+                    if initialized {
+                        let tick_address = self.tick_index_to_address(tick_index);
+                        let tick: Tick = (*self.ticks.get(&tick_address).unwrap()).clone();
+                        let mut tick = RefCell::new(tick);
+                        let mut tick = tick.borrow_mut();
+
+                        // crossing tick
+                        if !x_to_y || is_enough_amount_to_cross {
+                            cross_tick(&mut tick, &mut pool).unwrap();
+                        } else if !remaining_amount.is_zero() {
+                            total_amount_in += remaining_amount;
+                            remaining_amount = TokenAmount(0);
+                        }
+                    }
+                    // set tick to limit (below if price is going down, because current tick should always be below price)
+                    // pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
+                    //     tick_index.checked_sub(pool.tick_spacing as i32).unwrap()
+                    // } else {
+                    //     tick_index
+                    // };
+                    // } else {
+                    //     assert!(
+                    //         pool.current_tick_index
+                    //             .checked_rem(pool.tick_spacing.into())
+                    //             .unwrap()
+                    //             == 0,
+                    //         "tick not divisible by spacing"
+                    //     );
+                    //     pool.current_tick_index =
+                    //         get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
+                }
             }
             Ok(total_amount_out.0)
         };
