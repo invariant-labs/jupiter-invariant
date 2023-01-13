@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "jupiter-invariant"
+path = "src/lib.rs"
+
 [dependencies]
 solana-sdk = "1.14.11"
 solana-client = "1.14.11"

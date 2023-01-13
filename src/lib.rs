@@ -14,6 +14,8 @@ use invariant_types::log::get_tick_at_sqrt_price;
 use invariant_types::math::{compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
 use solana_client::rpc_client::RpcClient;
 
+// pub mod run;
+
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
 pub const TICK_LIMIT: i32 = 44364;
 pub const TICKMAP_SIZE: i32 = 2 * TICK_LIMIT - 1;
@@ -218,24 +220,38 @@ impl Amm for JupiterInvariant {
             input_mint,
             output_mint,
         } = *quote_params;
+        let x_to_y = input_mint.eq(&self.pool.token_x);
         let by_amount_in = true;
-        let x_to_y = quote_params.input_mint.eq(&self.pool.token_x);
         let mut sqrt_price_limit: Price = (if x_to_y { MIN_PRICE } else { MAX_PRICE }).clone();
+
+        let (expected_input_mint, expected_output_mint) = if x_to_y {
+            (self.pool.token_x, self.pool.token_y)
+        } else {
+            (self.pool.token_y, self.pool.token_x)
+        };
+        if !(input_mint.eq(&expected_input_mint) && output_mint.eq(&expected_output_mint)) {
+            panic!("Invalid quote params: token mints");
+        }
 
         let calculate_amount_out = || -> Result<u64, InvariantErrorCode> {
             let mut pool: RefCell<Pool> = RefCell::new(self.pool.clone());
-            let mut _ticks: RefCell<HashMap<Pubkey, Tick>> = RefCell::new(self.ticks.clone());
-            let mut _tickmap: RefCell<Tickmap> = RefCell::new(self.tickmap.clone());
+            let mut ticks: RefCell<HashMap<Pubkey, Tick>> = RefCell::new(self.ticks.clone());
+            let mut tickmap: RefCell<Tickmap> = RefCell::new(self.tickmap.clone());
             let mut pool = pool.borrow_mut();
+            let mut tickmap = tickmap.borrow_mut();
+            let mut ticks = ticks.borrow_mut();
             let mut remaining_amount = TokenAmount::new(in_amount);
             let mut total_amount_in: TokenAmount = TokenAmount::new(0);
             let mut total_amount_out: TokenAmount = TokenAmount::new(0);
             while !remaining_amount.is_zero() {
                 // not_enough_liquidity if failed
                 let (swap_limit, limiting_tick) =
-                    get_closer_limit(sqrt_price_limit, x_to_y, pool.current_tick_index, pool.tick_spacing, &self.tickmap).unwrap();
+                    get_closer_limit(sqrt_price_limit, x_to_y, pool.current_tick_index, pool.tick_spacing, &tickmap).unwrap();
                 let result: SwapResult = compute_swap_step(pool.sqrt_price, swap_limit, pool.liquidity, remaining_amount, by_amount_in, pool.fee);
+                // println!("result = {:?}", result);
                 remaining_amount -= result.amount_in + result.fee_amount;
+                println!("previous price : {:?}", { pool.sqrt_price });
+                println!("next price: {:?}", { result.next_price_sqrt });
                 pool.sqrt_price = result.next_price_sqrt;
                 total_amount_in += result.amount_in + result.fee_amount;
                 total_amount_out += result.amount_out;
@@ -270,6 +286,7 @@ impl Amm for JupiterInvariant {
                             total_amount_in += remaining_amount;
                             remaining_amount = TokenAmount(0);
                         }
+                        ticks.insert(tick_address, tick.clone());
                     }
                     // set tick to limit (below if price is going down, because current tick should always be below price)
                     pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
@@ -281,12 +298,14 @@ impl Amm for JupiterInvariant {
                     if pool.current_tick_index
                         .checked_rem(pool.tick_spacing.into())
                         .unwrap()
-                        == 0 {
+                        != 0 {
                         panic!("tick not divisible by spacing");
                     }
                     pool.current_tick_index =
                         get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
                 }
+                std::thread::sleep_ms(100);
+                println!("");
             }
             Ok(total_amount_out.0)
         };
@@ -343,6 +362,8 @@ mod tests {
         use solana_client::rpc_client::RpcClient;
 
         const USDC_USDT_MARKET: Pubkey = pubkey!("BRt1iVYDNoohkL1upEb8UfHE8yji6gEDAmuN9Y4yekyc");
+        const USDC: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+        const USDT: Pubkey = pubkey!("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
         let rpc = RpcClient::new("https://tame-ancient-mountain.solana-mainnet.quiknode.pro/6a9a95bf7bbb108aea620e7ee4c1fd5e1b67cc62");
         let pool_account = rpc.get_account(&USDC_USDT_MARKET).unwrap();
 
@@ -367,9 +388,15 @@ mod tests {
         let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
         jupiter_invariant.update(&accounts_map).unwrap();
 
-        jupiter_invariant.ticks.iter().for_each(|(_, tick)| {
-            println!("{:?}", tick);
-        });
+        let quote = QuoteParams {
+            in_amount: 16844 * 10u64.pow(6),
+            // in_amount: 1000,
+            input_mint: USDC,
+            output_mint: USDT,
+        };
+        println!("start swap");
+        let result = jupiter_invariant.quote(&quote).unwrap();
+        println!("{:?}", result);
     }
 
     #[test]
@@ -509,4 +536,43 @@ mod tests {
             });
         });
     }
+}
+
+pub fn main() {
+    const USDC_USDT_MARKET: Pubkey = pubkey!("BRt1iVYDNoohkL1upEb8UfHE8yji6gEDAmuN9Y4yekyc");
+    const USDC: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+    const USDT: Pubkey = pubkey!("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
+    let rpc = RpcClient::new("https://tame-ancient-mountain.solana-mainnet.quiknode.pro/6a9a95bf7bbb108aea620e7ee4c1fd5e1b67cc62");
+    let pool_account = rpc.get_account(&USDC_USDT_MARKET).unwrap();
+
+    let market_account = KeyedAccount {
+        key: USDC_USDT_MARKET,
+        account: pool_account,
+        params: None,
+    };
+
+    // create
+    let mut jupiter_invariant =
+        JupiterInvariant::new_from_keyed_account(&market_account).unwrap();
+
+    // get accounts to update
+    let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+    // get data from accounts
+    let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
+    // update state
+    jupiter_invariant.update(&accounts_map).unwrap();
+
+    let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+    let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
+    jupiter_invariant.update(&accounts_map).unwrap();
+
+    let quote = QuoteParams {
+        in_amount: 16844 * 10u64.pow(6),
+        // in_amount: 1000,
+        input_mint: USDC,
+        output_mint: USDT,
+    };
+    println!("start swap");
+    let result = jupiter_invariant.quote(&quote).unwrap();
+    println!("{:?}", result);
 }
