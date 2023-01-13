@@ -10,6 +10,7 @@ use solana_sdk::pubkey;
 use std::collections::HashMap;
 use invariant_types::decimals::*;
 use invariant_types::errors::InvariantErrorCode;
+use invariant_types::log::get_tick_at_sqrt_price;
 use invariant_types::math::{compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
 use solana_client::rpc_client::RpcClient;
 
@@ -271,21 +272,20 @@ impl Amm for JupiterInvariant {
                         }
                     }
                     // set tick to limit (below if price is going down, because current tick should always be below price)
-                    // pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
-                    //     tick_index.checked_sub(pool.tick_spacing as i32).unwrap()
-                    // } else {
-                    //     tick_index
-                    // };
-                    // } else {
-                    //     assert!(
-                    //         pool.current_tick_index
-                    //             .checked_rem(pool.tick_spacing.into())
-                    //             .unwrap()
-                    //             == 0,
-                    //         "tick not divisible by spacing"
-                    //     );
-                    //     pool.current_tick_index =
-                    //         get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
+                    pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
+                        tick_index.checked_sub(pool.tick_spacing as i32).unwrap()
+                    } else {
+                        tick_index
+                    };
+                } else {
+                    if pool.current_tick_index
+                        .checked_rem(pool.tick_spacing.into())
+                        .unwrap()
+                        == 0 {
+                        panic!("tick not divisible by spacing");
+                    }
+                    pool.current_tick_index =
+                        get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
                 }
             }
             Ok(total_amount_out.0)
