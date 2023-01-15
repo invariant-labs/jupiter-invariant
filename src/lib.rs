@@ -178,6 +178,12 @@ impl JupiterInvariant {
         let max_tick = limit_by_space.min(MAX_TICK);
         calculate_price_sqrt(max_tick)
     }
+
+    fn get_min_price(&self) -> Price {
+        let limit_by_space = (-TICK_LIMIT).checked_add(1).unwrap().checked_mul(self.pool.tick_spacing.into()).unwrap();
+        let min_tick = limit_by_space.max(-MAX_TICK);
+        calculate_price_sqrt(min_tick)
+    }
 }
 
 impl Amm for JupiterInvariant {
