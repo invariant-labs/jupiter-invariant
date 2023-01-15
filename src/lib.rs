@@ -22,8 +22,6 @@ pub const TICKMAP_SIZE: i32 = 2 * TICK_LIMIT - 1;
 pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
 // pub const PROGRAM_ID: Pubkey = pubkey!("9aiirQKPZ2peE9QrXYmsbTtR7wSDJi2HkQdHuaMpTpei"); // Devnet
 pub const TICK_CROSSES_PER_IX: usize = 19;
-pub const MIN_PRICE: Price = Price { v: 15258932000000000000 };
-pub const MAX_PRICE: Price = Price { v: 65535383934512647000000000000 };
 
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
@@ -241,7 +239,7 @@ impl Amm for JupiterInvariant {
         } = *quote_params;
         let x_to_y = input_mint.eq(&self.pool.token_x);
         let by_amount_in = true;
-        let sqrt_price_limit: Price = (if x_to_y { MIN_PRICE } else { MAX_PRICE }).clone();
+        let sqrt_price_limit: Price = (if x_to_y { Self::get_min_sqrt_price(self.pool.tick_spacing) } else { Self::get_max_sqrt_price(self.pool.tick_spacing) });
 
         let (expected_input_mint, expected_output_mint) = if x_to_y {
             (self.pool.token_x, self.pool.token_y)
@@ -414,8 +412,7 @@ mod tests {
         jupiter_invariant.update(&accounts_map).unwrap();
 
         let quote = QuoteParams {
-            in_amount: 1684444 * 10u64.pow(6),
-            // in_amount: 1000,
+            in_amount: 20547 * 10u64.pow(6),
             input_mint: USDT,
             output_mint: USDC,
         };
@@ -586,48 +583,4 @@ mod tests {
         let let_min_price = JupiterInvariant::get_min_sqrt_price(100);
         assert_eq!(let_min_price, Price::new(15258932000000000000));
     }
-}
-
-pub fn main() {
-    const USDC_USDT_MARKET: Pubkey = pubkey!("BRt1iVYDNoohkL1upEb8UfHE8yji6gEDAmuN9Y4yekyc");
-    const USDC: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-    const USDT: Pubkey = pubkey!("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
-    let rpc = RpcClient::new("https://tame-ancient-mountain.solana-mainnet.quiknode.pro/6a9a95bf7bbb108aea620e7ee4c1fd5e1b67cc62");
-    let pool_account = rpc.get_account(&USDC_USDT_MARKET).unwrap();
-
-    let market_account = KeyedAccount {
-        key: USDC_USDT_MARKET,
-        account: pool_account,
-        params: None,
-    };
-
-    // create
-    let mut jupiter_invariant =
-        JupiterInvariant::new_from_keyed_account(&market_account).unwrap();
-
-    // get accounts to update
-    let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-    // get data from accounts
-    let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
-    // update state
-    jupiter_invariant.update(&accounts_map).unwrap();
-
-    let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-    let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
-    jupiter_invariant.update(&accounts_map).unwrap();
-
-    let quote = QuoteParams {
-        in_amount: 116844 * 10u64.pow(6),
-        // in_amount: 1000,
-        input_mint: USDT,
-        output_mint: USDC,
-    };
-    println!("start swap");
-    let result = jupiter_invariant.quote(&quote).unwrap();
-    println!("{:?}", result);
-
-    // jupiter_invariant.ticks.iter().for_each(|(_, tick)| {
-    //     println!("{:?}", tick);
-    //     println!();
-    // });
 }
