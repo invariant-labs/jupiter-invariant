@@ -173,14 +173,14 @@ impl JupiterInvariant {
         self.tick_indexes_to_addresses(&all_indexes)
     }
 
-    fn get_max_price(&self) -> Price {
-        let limit_by_space = TICK_LIMIT.checked_sub(1).unwrap().checked_mul(self.pool.tick_spacing.into()).unwrap();
+    fn get_max_sqrt_price(tick_spacing: u16) -> Price {
+        let limit_by_space = TICK_LIMIT.checked_sub(1).unwrap().checked_mul(tick_spacing.into()).unwrap();
         let max_tick = limit_by_space.min(MAX_TICK);
         calculate_price_sqrt(max_tick)
     }
 
-    fn get_min_price(&self) -> Price {
-        let limit_by_space = (-TICK_LIMIT).checked_add(1).unwrap().checked_mul(self.pool.tick_spacing.into()).unwrap();
+    fn get_min_sqrt_price(tick_spacing: u16) -> Price {
+        let limit_by_space = (-TICK_LIMIT).checked_add(1).unwrap().checked_mul(tick_spacing.into()).unwrap();
         let min_tick = limit_by_space.max(-MAX_TICK);
         calculate_price_sqrt(min_tick)
     }
@@ -560,6 +560,31 @@ mod tests {
                 println!("{:?}", tick);
             });
         });
+    }
+
+    #[test]
+    fn test_price_limitation() {
+        let let_max_price = JupiterInvariant::get_max_sqrt_price(1);
+        assert_eq!(let_max_price, Price::new(9189293893553000000000000));
+        let let_max_price = JupiterInvariant::get_max_sqrt_price(2);
+        assert_eq!(let_max_price, Price::new(84443122262186000000000000));
+        let let_max_price = JupiterInvariant::get_max_sqrt_price(5);
+        assert_eq!(let_max_price, Price::new(65525554855399275000000000000));
+        let let_max_price = JupiterInvariant::get_max_sqrt_price(10);
+        assert_eq!(let_max_price, Price::new(65535383934512647000000000000));
+        let let_max_price = JupiterInvariant::get_max_sqrt_price(100);
+        assert_eq!(let_max_price, Price::new(65535383934512647000000000000));
+
+        let let_min_price = JupiterInvariant::get_min_sqrt_price(1);
+        assert_eq!(let_min_price, Price::new(108822289458000000000000));
+        let let_min_price = JupiterInvariant::get_min_sqrt_price(2);
+        assert_eq!(let_min_price, Price::new(11842290682000000000000));
+        let let_min_price = JupiterInvariant::get_min_sqrt_price(5);
+        assert_eq!(let_min_price, Price::new(15261221000000000000));
+        let let_min_price = JupiterInvariant::get_min_sqrt_price(10);
+        assert_eq!(let_min_price, Price::new(15258932000000000000));
+        let let_min_price = JupiterInvariant::get_min_sqrt_price(100);
+        assert_eq!(let_min_price, Price::new(15258932000000000000));
     }
 }
 
