@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::cell::RefCell;
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::{AnchorDeserialize, Key};
-use invariant_types::structs::{Pool, Tick, Tickmap};
+use invariant_types::structs::{MAX_TICK, Pool, Tick, Tickmap};
 use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
 };
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use invariant_types::decimals::*;
 use invariant_types::errors::InvariantErrorCode;
 use invariant_types::log::get_tick_at_sqrt_price;
-use invariant_types::math::{compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
+use invariant_types::math::{calculate_price_sqrt, compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
 use solana_client::rpc_client::RpcClient;
 
 // pub mod run;
@@ -172,6 +172,12 @@ impl JupiterInvariant {
         // println!("all ticks indexes = {:?}", all_indexes);
         self.tick_indexes_to_addresses(&all_indexes)
     }
+
+    fn get_max_price(&self) -> Price {
+        let limit_by_space = TICK_LIMIT.checked_sub(1).unwrap().checked_mul(self.pool.tick_spacing.into()).unwrap();
+        let max_tick = limit_by_space.min(MAX_TICK);
+        calculate_price_sqrt(max_tick)
+    }
 }
 
 impl Amm for JupiterInvariant {
@@ -213,6 +219,13 @@ impl Amm for JupiterInvariant {
         Ok(())
     }
 
+    // TICK SPACING = 1
+    // MIN_TICK = -44363
+    // MAX_TICK = 44363
+
+    // TICK SPACING = 2
+
+
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
         // always by token_in
         let QuoteParams {
@@ -222,7 +235,7 @@ impl Amm for JupiterInvariant {
         } = *quote_params;
         let x_to_y = input_mint.eq(&self.pool.token_x);
         let by_amount_in = true;
-        let mut sqrt_price_limit: Price = (if x_to_y { MIN_PRICE } else { MAX_PRICE }).clone();
+        let sqrt_price_limit: Price = (if x_to_y { MIN_PRICE } else { MAX_PRICE }).clone();
 
         let (expected_input_mint, expected_output_mint) = if x_to_y {
             (self.pool.token_x, self.pool.token_y)
@@ -248,15 +261,21 @@ impl Amm for JupiterInvariant {
                 let (swap_limit, limiting_tick) =
                     get_closer_limit(sqrt_price_limit, x_to_y, pool.current_tick_index, pool.tick_spacing, &tickmap).unwrap();
                 let result: SwapResult = compute_swap_step(pool.sqrt_price, swap_limit, pool.liquidity, remaining_amount, by_amount_in, pool.fee);
-                // println!("result = {:?}", result);
+                if limiting_tick.is_some() && limiting_tick.unwrap().0 == 44363 {
+                    println!("limit");
+                }
+
                 remaining_amount -= result.amount_in + result.fee_amount;
+                println!("limiting_tick: {:?}", limiting_tick);
                 println!("previous price : {:?}", { pool.sqrt_price });
                 println!("next price: {:?}", { result.next_price_sqrt });
                 pool.sqrt_price = result.next_price_sqrt;
                 total_amount_in += result.amount_in + result.fee_amount;
                 total_amount_out += result.amount_out;
+
                 // Fail if price would go over swap limit
                 if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
+                    println!("price limit reached");
                     return Err(InvariantErrorCode::PriceLimitReached.into());
                 }
 
@@ -304,7 +323,7 @@ impl Amm for JupiterInvariant {
                     pool.current_tick_index =
                         get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
                 }
-                std::thread::sleep_ms(100);
+                std::thread::sleep_ms(50);
                 println!("");
             }
             Ok(total_amount_out.0)
@@ -389,10 +408,10 @@ mod tests {
         jupiter_invariant.update(&accounts_map).unwrap();
 
         let quote = QuoteParams {
-            in_amount: 16844 * 10u64.pow(6),
+            in_amount: 1684444 * 10u64.pow(6),
             // in_amount: 1000,
-            input_mint: USDC,
-            output_mint: USDT,
+            input_mint: USDT,
+            output_mint: USDC,
         };
         println!("start swap");
         let result = jupiter_invariant.quote(&quote).unwrap();
@@ -567,12 +586,17 @@ pub fn main() {
     jupiter_invariant.update(&accounts_map).unwrap();
 
     let quote = QuoteParams {
-        in_amount: 16844 * 10u64.pow(6),
+        in_amount: 116844 * 10u64.pow(6),
         // in_amount: 1000,
-        input_mint: USDC,
-        output_mint: USDT,
+        input_mint: USDT,
+        output_mint: USDC,
     };
     println!("start swap");
     let result = jupiter_invariant.quote(&quote).unwrap();
     println!("{:?}", result);
+
+    // jupiter_invariant.ticks.iter().for_each(|(_, tick)| {
+    //     println!("{:?}", tick);
+    //     println!();
+    // });
 }
