@@ -38,7 +38,9 @@ enum PriceDirection {
 }
 
 struct InvariantSwapResult {
+    in_amount: u64,
     out_amount: u64,
+    fee_amount: u64,
     tick_required: u16,
     insufficient_liquidity: bool
 }
@@ -257,6 +259,7 @@ impl Amm for JupiterInvariant {
             let mut remaining_amount = TokenAmount::new(in_amount);
             let mut total_amount_in: TokenAmount = TokenAmount::new(0);
             let mut total_amount_out: TokenAmount = TokenAmount::new(0);
+            let mut total_fee_amount: TokenAmount = TokenAmount::new(0);
             let mut tick_required = 0;
             let mut insufficient_liquidity = false;
             while !remaining_amount.is_zero() {
@@ -271,6 +274,7 @@ impl Amm for JupiterInvariant {
                 pool.sqrt_price = result.next_price_sqrt;
                 total_amount_in += result.amount_in + result.fee_amount;
                 total_amount_out += result.amount_out;
+                total_fee_amount += result.fee_amount;
 
                 // Fail if price would go over swap limit
                 if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
@@ -325,7 +329,9 @@ impl Amm for JupiterInvariant {
                 // std::thread::sleep_ms(50);
             }
             Ok(InvariantSwapResult {
+                in_amount: total_amount_in.0,
                 out_amount: total_amount_out.0,
+                fee_amount: total_fee_amount.0,
                 tick_required,
                 insufficient_liquidity,
             })
@@ -335,7 +341,9 @@ impl Amm for JupiterInvariant {
         match result {
             Ok(result) => {
                 let InvariantSwapResult {
+                    in_amount,
                     out_amount,
+                    fee_amount,
                     tick_required,
                     insufficient_liquidity,
                 } = result;
@@ -345,7 +353,9 @@ impl Amm for JupiterInvariant {
                     tick_required >= TICK_CROSSES_PER_IX as u16
                 };
                 Ok(Quote {
+                    in_amount,
                     out_amount,
+                    fee_amount,
                     not_enough_liquidity,
                     ..Quote::default()
                 })
