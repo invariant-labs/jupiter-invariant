@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
-use anchor_lang::prelude::Pubkey;
+use anchor_lang::prelude::{AccountMeta, Pubkey};
 use anchor_lang::{AnchorDeserialize, Key};
 use invariant_types::structs::{MAX_TICK, Pool, Tick, Tickmap};
 use jupiter_core::amm::{
@@ -8,10 +8,12 @@ use jupiter_core::amm::{
 };
 use solana_sdk::pubkey;
 use std::collections::HashMap;
+use anyhow::Error;
 use invariant_types::decimals::*;
 use invariant_types::errors::InvariantErrorCode;
 use invariant_types::log::get_tick_at_sqrt_price;
 use invariant_types::math::{calculate_price_sqrt, compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
+use jupiter::jupiter_override::{Swap, SwapLeg};
 use solana_client::rpc_client::RpcClient;
 
 // pub mod run;
@@ -25,11 +27,27 @@ pub const TICK_CROSSES_PER_IX: usize = 19;
 
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
+    program_id: Pubkey,
     market_key: Pubkey,
     label: String,
     pool: Pool,
     tickmap: Tickmap,
     ticks: HashMap<Pubkey, Tick>,
+}
+
+pub struct InvariantSwap {
+    state: AccountMeta,
+    pool: AccountMeta,
+    tickmap: AccountMeta,
+    account_x: AccountMeta,
+    account_y: AccountMeta,
+    reserve_x: AccountMeta,
+    reserve_y: AccountMeta,
+    owner: AccountMeta,
+    program_authority: AccountMeta,
+    token_program: AccountMeta,
+    ticks_accounts: Vec<AccountMeta>,
+    referral_fee: Option<AccountMeta>
 }
 
 enum PriceDirection {
@@ -42,7 +60,7 @@ struct InvariantSwapResult {
     out_amount: u64,
     fee_amount: u64,
     tick_required: u16,
-    insufficient_liquidity: bool
+    insufficient_liquidity: bool,
 }
 
 impl JupiterInvariant {
@@ -50,6 +68,7 @@ impl JupiterInvariant {
         let pool = Self::deserialize::<Pool>(&keyed_account.account.data);
 
         Ok(Self {
+            program_id: PROGRAM_ID,
             label: String::from("Invariant"),
             market_key: keyed_account.key,
             pool,
@@ -153,7 +172,7 @@ impl JupiterInvariant {
     fn tick_index_to_address(&self, i: i32) -> Pubkey {
         let (pubkey, _) = Pubkey::find_program_address(
             &[b"tickv1", self.market_key.key().as_ref(), &i.to_le_bytes()],
-            &PROGRAM_ID,
+            &self.program_id,
         );
         pubkey
     }
@@ -279,7 +298,7 @@ impl Amm for JupiterInvariant {
                 // Fail if price would go over swap limit
                 if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
                     insufficient_liquidity = true;
-                    break
+                    break;
                 }
 
                 // crossing tick
@@ -375,6 +394,58 @@ impl Amm for JupiterInvariant {
     ) -> anyhow::Result<SwapLegAndAccountMetas> {
         let _ = swap_params;
         todo!()
+
+        // let SwapParams {
+        //     destination_mint,
+        //     in_amount,
+        //     source_mint,
+        //     user_destination_token_account,
+        //     user_source_token_account,
+        //     user_transfer_authority,
+        //     open_order_address,
+        //     quote_mint_to_referrer,
+        // } = swap_params;
+        //
+        // let (swap_source, swap_destination) = if *source_mint == self.pool.token_x {
+        //     if *destination_mint == self.pool.token_y {
+        //         (
+        //             &self.pool.token_x_reserve,
+        //             &self.pool.token_y_reserve,
+        //         )
+        //     } else {
+        //         return Err(Error::msg("Invalid quote mint"));
+        //     }
+        // } else {
+        //     if *destination_mint == self.pool.token_x {
+        //         (
+        //             &self.pool.token_y_reserve,
+        //             &self.pool.token_x_reserve,
+        //         )
+        //     } else {
+        //         return Err(Error::msg("Invalid base mint"));
+        //     }
+        // };
+        //
+        // let account_metas = TokenSwap {
+        //     destination: *user_destination_token_account,
+        //     source: *user_source_token_account,
+        //     user_transfer_authority: *user_transfer_authority,
+        //     authority: self.get_authority(), // TODO: fix
+        //     token_swap_program: self.program_id,
+        //     swap: self.key,
+        //     pool_mint: self.state.pool_mint,
+        //     pool_fee: self.state.pool_fee_account,
+        //     swap_destination,
+        //     swap_source,
+        // }
+        //     .to_account_metas(None);
+        //
+        // Ok(SwapLegAndAccountMetas {
+        //     swap_leg: SwapLeg::Swap {
+        //         swap: Swap::Invariant,
+        //     },
+        //     account_metas,
+        // })
     }
 
     fn clone_amm(&self) -> Box<dyn Amm + Send + Sync> {
