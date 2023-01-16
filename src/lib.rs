@@ -37,10 +37,14 @@ enum PriceDirection {
     DOWN,
 }
 
+struct InvariantSwapResult {
+    out_amount: u64,
+    tick_required: u16,
+    insufficient_liquidity: bool
+}
+
 impl JupiterInvariant {
     pub fn new_from_keyed_account(keyed_account: &KeyedAccount) -> Result<Self, ()> {
-        // keyed_account.account.data.split_at()
-        // let pool: Pool = Pool::try_from_slice(keyed_account.account.data.split_at(ANCHOR_DISCRIMINATOR_SIZE).1).unwrap();
         let pool = Self::deserialize::<Pool>(&keyed_account.account.data);
 
         Ok(Self {
@@ -62,7 +66,7 @@ impl JupiterInvariant {
         T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 
-    fn fetch_accounts_map(rpc: &RpcClient, accounts_to_update: Vec<Pubkey>) -> HashMap<Pubkey, Vec<u8>> {
+    fn fetch_accounts(rpc: &RpcClient, accounts_to_update: Vec<Pubkey>) -> HashMap<Pubkey, Vec<u8>> {
         rpc
             .get_multiple_accounts(&accounts_to_update)
             .unwrap()
@@ -223,13 +227,6 @@ impl Amm for JupiterInvariant {
         Ok(())
     }
 
-    // TICK SPACING = 1
-    // MIN_TICK = -44363
-    // MAX_TICK = 44363
-
-    // TICK SPACING = 2
-
-
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
         // always by token_in
         let QuoteParams {
@@ -250,7 +247,7 @@ impl Amm for JupiterInvariant {
             panic!("Invalid quote params: token mints");
         }
 
-        let calculate_amount_out = || -> Result<u64, InvariantErrorCode> {
+        let calculate_amount_out = || -> Result<InvariantSwapResult, ()> {
             let mut pool: RefCell<Pool> = RefCell::new(self.pool.clone());
             let mut ticks: RefCell<HashMap<Pubkey, Tick>> = RefCell::new(self.ticks.clone());
             let mut tickmap: RefCell<Tickmap> = RefCell::new(self.tickmap.clone());
@@ -260,14 +257,12 @@ impl Amm for JupiterInvariant {
             let mut remaining_amount = TokenAmount::new(in_amount);
             let mut total_amount_in: TokenAmount = TokenAmount::new(0);
             let mut total_amount_out: TokenAmount = TokenAmount::new(0);
+            let mut tick_required = 0;
+            let mut insufficient_liquidity = false;
             while !remaining_amount.is_zero() {
-                // not_enough_liquidity if failed
                 let (swap_limit, limiting_tick) =
                     get_closer_limit(sqrt_price_limit, x_to_y, pool.current_tick_index, pool.tick_spacing, &tickmap).unwrap();
                 let result: SwapResult = compute_swap_step(pool.sqrt_price, swap_limit, pool.liquidity, remaining_amount, by_amount_in, pool.fee);
-                if limiting_tick.is_some() && limiting_tick.unwrap().0 == 44363 {
-                    println!("limit");
-                }
 
                 remaining_amount -= result.amount_in + result.fee_amount;
                 println!("limiting_tick: {:?}", limiting_tick);
@@ -279,12 +274,11 @@ impl Amm for JupiterInvariant {
 
                 // Fail if price would go over swap limit
                 if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
-                    println!("price limit reached");
-                    return Err(InvariantErrorCode::PriceLimitReached.into());
+                    insufficient_liquidity = true;
+                    break
                 }
 
                 // crossing tick
-                // trunk-ignore(clippy/unnecessary_unwrap)
                 if result.next_price_sqrt == swap_limit && limiting_tick.is_some() {
                     let (tick_index, initialized) = limiting_tick.unwrap();
                     let is_enough_amount_to_cross = is_enough_amount_to_push_price(
@@ -310,6 +304,7 @@ impl Amm for JupiterInvariant {
                             remaining_amount = TokenAmount(0);
                         }
                         ticks.insert(tick_address, tick.clone());
+                        tick_required += 1;
                     }
                     // set tick to limit (below if price is going down, because current tick should always be below price)
                     pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
@@ -327,17 +322,31 @@ impl Amm for JupiterInvariant {
                     pool.current_tick_index =
                         get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
                 }
-                std::thread::sleep_ms(50);
-                println!("");
+                // std::thread::sleep_ms(50);
             }
-            Ok(total_amount_out.0)
+            Ok(InvariantSwapResult {
+                out_amount: total_amount_out.0,
+                tick_required,
+                insufficient_liquidity,
+            })
         };
 
         let result = calculate_amount_out();
         match result {
-            Ok(out_amount) => {
+            Ok(result) => {
+                let InvariantSwapResult {
+                    out_amount,
+                    tick_required,
+                    insufficient_liquidity,
+                } = result;
+                let not_enough_liquidity = if insufficient_liquidity {
+                    true
+                } else {
+                    tick_required >= TICK_CROSSES_PER_IX as u16
+                };
                 Ok(Quote {
                     out_amount,
+                    not_enough_liquidity,
                     ..Quote::default()
                 })
             }
@@ -396,27 +405,25 @@ mod tests {
             params: None,
         };
 
-        // create
+        // create JupiterInvariant
         let mut jupiter_invariant =
             JupiterInvariant::new_from_keyed_account(&market_account).unwrap();
 
-        // get accounts to update
+        // update market data
         let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-        // get data from accounts
-        let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
-        // update state
+        let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
         jupiter_invariant.update(&accounts_map).unwrap();
 
+        // update once again due to fetch accounts on a non-initialized tickmap.
         let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-        let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
+        let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
         jupiter_invariant.update(&accounts_map).unwrap();
 
         let quote = QuoteParams {
-            in_amount: 20547 * 10u64.pow(6),
+            in_amount: 15_000 * 10u64.pow(6),
             input_mint: USDT,
             output_mint: USDC,
         };
-        println!("start swap");
         let result = jupiter_invariant.quote(&quote).unwrap();
         println!("{:?}", result);
     }
@@ -544,10 +551,10 @@ mod tests {
                     params: None,
                 }).unwrap();
             let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-            let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
+            let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
             jupiter_invariant.update(&accounts_map).unwrap();
             let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-            let accounts_map = JupiterInvariant::fetch_accounts_map(&rpc, accounts_to_update);
+            let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
             jupiter_invariant.update(&accounts_map).unwrap();
 
             if jupiter_invariant.ticks.len() == 0 {
