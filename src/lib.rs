@@ -216,15 +216,9 @@ impl JupiterInvariant {
         let mut below = current_index;
         let mut reached_limit = false;
 
-        // println!("len of tickmap = {:?}", tickmap.len());
         while !reached_limit && found.len() < amount_limit {
             match direction {
                 PriceDirection::UP => {
-                    // if above / 8 > 0 {
-                    // println!("index = {:?}", above / 8);
-                    // println!("above = {:?}", above);
-                    // println!("2 * TICK_LIMIT = {:?}", 2 * TICK_LIMIT);
-                    // }
                     let value_above: u8 =
                         *tickmap.get((above / 8) as usize).unwrap() & (1 << (above % 8));
                     if value_above != 0 {
@@ -234,10 +228,6 @@ impl JupiterInvariant {
                     above += 1;
                 }
                 PriceDirection::DOWN => {
-                    // if below / 8 < 2 {
-                    //     println!("index = {:?}", below / 8);
-                    //     println!("above = {:?}", below);
-                    // }
                     let value_below: u8 =
                         *tickmap.get((below / 8) as usize).unwrap() & (1 << (below % 8));
                     if value_below != 0 {
@@ -276,21 +266,12 @@ impl JupiterInvariant {
     }
 
     fn get_ticks_addresses_around(&self) -> Vec<Pubkey> {
-        // self.tickmap.bitmap.iter().for_each(|b| {
-        //     if *b != 0 {
-        //         println!("find non-zero byte");
-        //     }
-        // });
         let above_indexes = self
             .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
-        // println!("above: {:?}", above_addresses);
-
         let below_indexes = self
             .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN);
-        // println!("below: {:?}", below_addresses);
-
         let all_indexes = [below_indexes, above_indexes].concat();
-        // println!("all ticks indexes = {:?}", all_indexes);
+
         self.tick_indexes_to_addresses(&all_indexes)
     }
 
@@ -354,7 +335,7 @@ impl Amm for JupiterInvariant {
             output_mint,
         } = *quote_params;
         let x_to_y = input_mint.eq(&self.pool.token_x);
-        let by_amount_in = true;
+        let by_amount_in = true; // always by amount in
         let sqrt_price_limit: Price = (if x_to_y { Self::get_min_sqrt_price(self.pool.tick_spacing) } else { Self::get_max_sqrt_price(self.pool.tick_spacing) });
 
         let (expected_input_mint, expected_output_mint) = if x_to_y {
@@ -385,9 +366,6 @@ impl Amm for JupiterInvariant {
                 let result: SwapResult = compute_swap_step(pool.sqrt_price, swap_limit, pool.liquidity, remaining_amount, by_amount_in, pool.fee);
 
                 remaining_amount -= result.amount_in + result.fee_amount;
-                println!("limiting_tick: {:?}", limiting_tick);
-                println!("previous price : {:?}", { pool.sqrt_price });
-                println!("next price: {:?}", { result.next_price_sqrt });
                 pool.sqrt_price = result.next_price_sqrt;
                 total_amount_in += result.amount_in + result.fee_amount;
                 total_amount_out += result.amount_out;
@@ -578,6 +556,18 @@ mod tests {
         };
         let result = jupiter_invariant.quote(&quote).unwrap();
         println!("{:?}", result);
+
+        let swap_leg_and_account_metas = jupiter_invariant.get_swap_leg_and_account_metas(&SwapParams {
+            source_mint: quote.input_mint,
+            destination_mint: quote.output_mint,
+            user_destination_token_account: Pubkey::new_unique(),
+            user_source_token_account: Pubkey::new_unique(),
+            user_transfer_authority: Pubkey::new_unique(),
+            open_order_address: None,
+            quote_mint_to_referrer: None,
+            in_amount: quote.in_amount,
+        }).unwrap();
+        println!("{:?}", swap_leg_and_account_metas.account_metas);
     }
 
     #[test]
