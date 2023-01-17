@@ -62,7 +62,7 @@ pub struct InvariantSwapParams {
 
 impl InvariantSwapAccounts {
     pub fn from_pubkeys(jupiter_invariant: &JupiterInvariant, invariant_swap_params: &InvariantSwapParams) -> Result<(Self, bool), Error> {
-        let InvariantSwapParams {owner, source_mint, destination_mint,source_account, destination_account, referral_fee} = invariant_swap_params;
+        let InvariantSwapParams { owner, source_mint, destination_mint, source_account, destination_account, referral_fee } = invariant_swap_params;
 
         let (x_to_y, account_x, account_y) = match (jupiter_invariant.pool.token_x.eq(source_mint), jupiter_invariant.pool.token_y.eq(destination_mint)) {
             (true, true) => (true, *source_account, *destination_account, ),
@@ -488,62 +488,30 @@ impl Amm for JupiterInvariant {
     ) -> anyhow::Result<SwapLegAndAccountMetas> {
         let SwapParams {
             destination_mint,
-            in_amount,
             source_mint,
             user_destination_token_account,
             user_source_token_account,
             user_transfer_authority,
-            open_order_address,
-            quote_mint_to_referrer,
+            ..
         } = swap_params;
 
-        let x_to_y = if *source_mint == self.pool.token_x {
-            true
-        } else {
-            false
+        let invariant_swap_params = InvariantSwapParams {
+            owner: *user_transfer_authority,
+            source_mint: *source_mint,
+            destination_mint: *destination_mint,
+            source_account: *user_source_token_account,
+            destination_account: *user_destination_token_account,
+            referral_fee: None,
         };
-        // let ( swap_source, swap_destination) = if *source_mint == self.pool.token_x {
-        //     if *destination_mint == self.pool.token_y {
-        //         (
-        //             true,
-        //             &self.pool.token_x_reserve,
-        //             &self.pool.token_y_reserve,
-        //         )
-        //     } else {
-        //         return Err(Error::msg("Invalid quote mint"));
-        //     }
-        // } else {
-        //     if *destination_mint == self.pool.token_x {
-        //         (
-        //             false,
-        //             &self.pool.token_y_reserve,
-        //             &self.pool.token_x_reserve,
-        //         )
-        //     } else {
-        //         return Err(Error::msg("Invalid base mint"));
-        //     }
-        // };
-        //
-        // let account_metas = TokenSwap {
-        //     destination: *user_destination_token_account,
-        //     source: *user_source_token_account,
-        //     user_transfer_authority: *user_transfer_authority,
-        //     authority: self.get_authority(), // TODO: fix
-        //     token_swap_program: self.program_id,
-        //     swap: self.key,
-        //     pool_mint: self.state.pool_mint,
-        //     pool_fee: self.state.pool_fee_account,
-        //     swap_destination,
-        //     swap_source,
-        // }
-        //     .to_account_metas(None);
+
+        let (invariant_swap_accounts, x_to_y) = InvariantSwapAccounts::from_pubkeys(&self, &invariant_swap_params)?;
+        let account_metas = invariant_swap_accounts.to_account_metas();
 
         Ok(SwapLegAndAccountMetas {
             swap_leg: SwapLeg::Swap {
                 swap: Swap::Invariant { x_to_y },
             },
-            account_metas: Vec::new(),
-            // account_metas,
+            account_metas,
         })
     }
 
