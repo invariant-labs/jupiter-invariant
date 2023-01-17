@@ -13,6 +13,7 @@ use invariant_types::decimals::*;
 use invariant_types::errors::InvariantErrorCode;
 use invariant_types::log::get_tick_at_sqrt_price;
 use invariant_types::math::{calculate_price_sqrt, compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
+use invariant_types::SEED;
 use jupiter::jupiter_override::{Swap, SwapLeg};
 use solana_client::rpc_client::RpcClient;
 
@@ -28,6 +29,7 @@ pub const TICK_CROSSES_PER_IX: usize = 19;
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
     program_id: Pubkey,
+    program_authority: Pubkey,
     market_key: Pubkey,
     label: String,
     pool: Pool,
@@ -35,19 +37,42 @@ pub struct JupiterInvariant {
     ticks: HashMap<Pubkey, Tick>,
 }
 
+#[derive(Clone, Default)]
 pub struct InvariantSwap {
-    state: AccountMeta,
-    pool: AccountMeta,
-    tickmap: AccountMeta,
-    account_x: AccountMeta,
-    account_y: AccountMeta,
-    reserve_x: AccountMeta,
-    reserve_y: AccountMeta,
-    owner: AccountMeta,
-    program_authority: AccountMeta,
-    token_program: AccountMeta,
-    ticks_accounts: Vec<AccountMeta>,
-    referral_fee: Option<AccountMeta>
+    state: Pubkey,
+    pool: Pubkey,
+    tickmap: Pubkey,
+    account_x: Pubkey,
+    account_y: Pubkey,
+    reserve_x: Pubkey,
+    reserve_y: Pubkey,
+    owner: Pubkey,
+    program_authority: Pubkey,
+    token_program: Pubkey,
+    ticks_accounts: Vec<Pubkey>,
+    referral_fee: Option<Pubkey>,
+}
+
+impl InvariantSwap {
+    pub fn from_pubkeys() -> Self {
+        Self::default()
+    }
+
+    pub fn to_account_metas(&self) -> Vec<AccountMeta> {
+        vec![
+            AccountMeta::new_readonly(self.state, false),
+            AccountMeta::new(self.pool, false),
+            AccountMeta::new(self.tickmap, false),
+            AccountMeta::new(self.account_x, false),
+            AccountMeta::new(self.account_y, false),
+            AccountMeta::new(self.reserve_x, false),
+            AccountMeta::new(self.reserve_y, false),
+            AccountMeta::new(self.owner, true),
+            AccountMeta::new_readonly(self.program_authority, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            // TODO: add ticks and referral_fee
+        ]
+    }
 }
 
 enum PriceDirection {
@@ -67,8 +92,10 @@ impl JupiterInvariant {
     pub fn new_from_keyed_account(keyed_account: &KeyedAccount) -> Result<Self, ()> {
         let pool = Self::deserialize::<Pool>(&keyed_account.account.data);
 
+
         Ok(Self {
             program_id: PROGRAM_ID,
+            program_authority: Self::get_program_authority(PROGRAM_ID),
             label: String::from("Invariant"),
             market_key: keyed_account.key,
             pool,
@@ -157,6 +184,14 @@ impl JupiterInvariant {
             let i = i.checked_sub(TICK_LIMIT).unwrap();
             i.checked_mul(tick_spacing).unwrap()
         }).collect()
+    }
+
+    fn get_program_authority(program_id: Pubkey) -> Pubkey {
+        Pubkey::find_program_address(
+            // [SEED.as_bytes()],
+            &[SEED.as_bytes()],
+            &program_id,
+        ).0
     }
 
     fn tick_indexes_to_addresses(&self, indexes: &[i32]) -> Vec<Pubkey> {
@@ -392,23 +427,26 @@ impl Amm for JupiterInvariant {
         &self,
         swap_params: &SwapParams,
     ) -> anyhow::Result<SwapLegAndAccountMetas> {
-        let _ = swap_params;
-        todo!()
+        let SwapParams {
+            destination_mint,
+            in_amount,
+            source_mint,
+            user_destination_token_account,
+            user_source_token_account,
+            user_transfer_authority,
+            open_order_address,
+            quote_mint_to_referrer,
+        } = swap_params;
 
-        // let SwapParams {
-        //     destination_mint,
-        //     in_amount,
-        //     source_mint,
-        //     user_destination_token_account,
-        //     user_source_token_account,
-        //     user_transfer_authority,
-        //     open_order_address,
-        //     quote_mint_to_referrer,
-        // } = swap_params;
-        //
-        // let (swap_source, swap_destination) = if *source_mint == self.pool.token_x {
+        let x_to_y = if *source_mint == self.pool.token_x {
+            true
+        } else {
+            false
+        };
+        // let ( swap_source, swap_destination) = if *source_mint == self.pool.token_x {
         //     if *destination_mint == self.pool.token_y {
         //         (
+        //             true,
         //             &self.pool.token_x_reserve,
         //             &self.pool.token_y_reserve,
         //         )
@@ -418,6 +456,7 @@ impl Amm for JupiterInvariant {
         // } else {
         //     if *destination_mint == self.pool.token_x {
         //         (
+        //             false,
         //             &self.pool.token_y_reserve,
         //             &self.pool.token_x_reserve,
         //         )
@@ -439,13 +478,14 @@ impl Amm for JupiterInvariant {
         //     swap_source,
         // }
         //     .to_account_metas(None);
-        //
-        // Ok(SwapLegAndAccountMetas {
-        //     swap_leg: SwapLeg::Swap {
-        //         swap: Swap::Invariant,
-        //     },
-        //     account_metas,
-        // })
+
+        Ok(SwapLegAndAccountMetas {
+            swap_leg: SwapLeg::Swap {
+                swap: Swap::Invariant { x_to_y },
+            },
+            account_metas: Vec::new(),
+            // account_metas,
+        })
     }
 
     fn clone_amm(&self) -> Box<dyn Amm + Send + Sync> {
