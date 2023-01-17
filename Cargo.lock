@@ -1128,7 +1128,7 @@ checksum = "23d8666cb01533c39dde32bcbab8e227b4ed6679b2c925eba05feabea39508fb"
 [[package]]
 name = "decimal"
 version = "0.1.0"
-source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#333fa114a7d6a4fcb4e524d863d26322d9b49e7a"
+source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#e12605555efafbf9604c026838e6ad4e5cf70a36"
 dependencies = [
  "decimal_core",
  "integer-sqrt",
@@ -1139,7 +1139,7 @@ dependencies = [
 [[package]]
 name = "decimal_core"
 version = "0.1.0"
-source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#333fa114a7d6a4fcb4e524d863d26322d9b49e7a"
+source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#e12605555efafbf9604c026838e6ad4e5cf70a36"
 dependencies = [
  "proc-macro2 1.0.50",
  "quote 1.0.23",
@@ -1858,7 +1858,7 @@ dependencies = [
 [[package]]
 name = "invariant-types"
 version = "0.1.0"
-source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#333fa114a7d6a4fcb4e524d863d26322d9b49e7a"
+source = "git+https://github.com/invariant-labs/protocol.git?branch=create-invariant-types#e12605555efafbf9604c026838e6ad4e5cf70a36"
 dependencies = [
  "anchor-lang",
  "borsh 0.9.3",
