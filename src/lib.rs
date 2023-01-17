@@ -13,11 +13,9 @@ use invariant_types::decimals::*;
 use invariant_types::errors::InvariantErrorCode;
 use invariant_types::log::get_tick_at_sqrt_price;
 use invariant_types::math::{calculate_price_sqrt, compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
-use invariant_types::SEED;
+use invariant_types::{SEED, STATE_SEED};
 use jupiter::jupiter_override::{Swap, SwapLeg};
 use solana_client::rpc_client::RpcClient;
-
-// pub mod run;
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
 pub const TICK_LIMIT: i32 = 44364;
@@ -29,7 +27,6 @@ pub const TICK_CROSSES_PER_IX: usize = 19;
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
     program_id: Pubkey,
-    program_authority: Pubkey,
     market_key: Pubkey,
     label: String,
     pool: Pool,
@@ -38,7 +35,7 @@ pub struct JupiterInvariant {
 }
 
 #[derive(Clone, Default)]
-pub struct InvariantSwap {
+pub struct InvariantSwapAccounts {
     state: Pubkey,
     pool: Pubkey,
     tickmap: Pubkey,
@@ -53,9 +50,29 @@ pub struct InvariantSwap {
     referral_fee: Option<Pubkey>,
 }
 
-impl InvariantSwap {
-    pub fn from_pubkeys() -> Self {
-        Self::default()
+impl InvariantSwapAccounts {
+    pub fn from_pubkeys(jupiter_invariant: &JupiterInvariant, owner: &Pubkey, source_mint: &Pubkey, destination_mint: &Pubkey, source_account: &Pubkey, destination_account: &Pubkey) -> Result<(Self, bool), Error> {
+        let (x_to_y, account_x, account_y) = match (jupiter_invariant.pool.token_x.eq(source_mint), jupiter_invariant.pool.token_y.eq(destination_mint)) {
+            (true, true) => (true, *source_account, *destination_account, ),
+            (false, true) => (false, *destination_account, *source_account),
+            _ => return Err(Error::msg("Invalid source or destination mint")),
+        };
+
+        let invariant_swap_accounts = Self {
+            state: Self::get_state_address(jupiter_invariant.program_id),
+            pool: jupiter_invariant.market_key,
+            tickmap: jupiter_invariant.pool.tickmap,
+            account_x,
+            account_y,
+            reserve_x: jupiter_invariant.pool.token_x_reserve,
+            reserve_y: jupiter_invariant.pool.token_y_reserve,
+            owner: *owner,
+            program_authority: Self::get_program_authority(jupiter_invariant.program_id),
+            token_program: spl_token::id(),
+            ..Default::default()
+        };
+
+        Ok((invariant_swap_accounts, x_to_y))
     }
 
     pub fn to_account_metas(&self) -> Vec<AccountMeta> {
@@ -72,6 +89,20 @@ impl InvariantSwap {
             AccountMeta::new_readonly(spl_token::id(), false),
             // TODO: add ticks and referral_fee
         ]
+    }
+
+    fn get_program_authority(program_id: Pubkey) -> Pubkey {
+        Pubkey::find_program_address(
+            &[SEED.as_bytes()],
+            &program_id,
+        ).0
+    }
+
+    fn get_state_address(program_id: Pubkey) -> Pubkey {
+        Pubkey::find_program_address(
+            &[STATE_SEED.as_bytes()],
+            &program_id,
+        ).0
     }
 }
 
@@ -92,10 +123,8 @@ impl JupiterInvariant {
     pub fn new_from_keyed_account(keyed_account: &KeyedAccount) -> Result<Self, ()> {
         let pool = Self::deserialize::<Pool>(&keyed_account.account.data);
 
-
         Ok(Self {
             program_id: PROGRAM_ID,
-            program_authority: Self::get_program_authority(PROGRAM_ID),
             label: String::from("Invariant"),
             market_key: keyed_account.key,
             pool,
@@ -186,13 +215,6 @@ impl JupiterInvariant {
         }).collect()
     }
 
-    fn get_program_authority(program_id: Pubkey) -> Pubkey {
-        Pubkey::find_program_address(
-            // [SEED.as_bytes()],
-            &[SEED.as_bytes()],
-            &program_id,
-        ).0
-    }
 
     fn tick_indexes_to_addresses(&self, indexes: &[i32]) -> Vec<Pubkey> {
         let pubkeys: Vec<Pubkey> = indexes
