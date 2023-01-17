@@ -50,8 +50,20 @@ pub struct InvariantSwapAccounts {
     referral_fee: Option<Pubkey>,
 }
 
+#[derive(Clone, Default)]
+pub struct InvariantSwapParams {
+    owner: Pubkey,
+    source_mint: Pubkey,
+    destination_mint: Pubkey,
+    source_account: Pubkey,
+    destination_account: Pubkey,
+    referral_fee: Option<Pubkey>,
+}
+
 impl InvariantSwapAccounts {
-    pub fn from_pubkeys(jupiter_invariant: &JupiterInvariant, owner: &Pubkey, source_mint: &Pubkey, destination_mint: &Pubkey, source_account: &Pubkey, destination_account: &Pubkey, referral_fee: Option<Pubkey>) -> Result<(Self, bool), Error> {
+    pub fn from_pubkeys(jupiter_invariant: &JupiterInvariant, invariant_swap_params: &InvariantSwapParams) -> Result<(Self, bool), Error> {
+        let InvariantSwapParams {owner, source_mint, destination_mint,source_account, destination_account, referral_fee} = invariant_swap_params;
+
         let (x_to_y, account_x, account_y) = match (jupiter_invariant.pool.token_x.eq(source_mint), jupiter_invariant.pool.token_y.eq(destination_mint)) {
             (true, true) => (true, *source_account, *destination_account, ),
             (false, true) => (false, *destination_account, *source_account),
@@ -85,14 +97,14 @@ impl InvariantSwapAccounts {
             program_authority: Self::get_program_authority(jupiter_invariant.program_id),
             token_program: spl_token::id(),
             ticks_accounts,
-            referral_fee,
+            referral_fee: *referral_fee,
         };
 
         Ok((invariant_swap_accounts, x_to_y))
     }
 
     pub fn to_account_metas(&self) -> Vec<AccountMeta> {
-        vec![
+        let mut account_metas: Vec<AccountMeta> = vec![
             AccountMeta::new_readonly(self.state, false),
             AccountMeta::new(self.pool, false),
             AccountMeta::new(self.tickmap, false),
@@ -102,9 +114,18 @@ impl InvariantSwapAccounts {
             AccountMeta::new(self.reserve_y, false),
             AccountMeta::new(self.owner, true),
             AccountMeta::new_readonly(self.program_authority, false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            // TODO: add ticks and referral_fee
-        ]
+            AccountMeta::new_readonly(self.token_program, false),
+        ];
+        if self.referral_fee.is_some() {
+            account_metas.push(AccountMeta::new(self.referral_fee.unwrap(), false));
+        };
+        let ticks_metas: Vec<AccountMeta> = self.ticks_accounts
+            .iter()
+            .map(|tick_address| AccountMeta::new(*tick_address, false))
+            .collect();
+        account_metas.extend(ticks_metas);
+
+        account_metas
     }
 
     fn get_program_authority(program_id: Pubkey) -> Pubkey {
@@ -245,7 +266,6 @@ impl JupiterInvariant {
     fn tick_index_to_address(&self, i: i32) -> Pubkey {
         let (pubkey, _) = Pubkey::find_program_address(
             &[TICK_SEED.as_bytes(), self.market_key.key().as_ref(), &i.to_le_bytes()],
-            // &[b"tickv1", self.market_key.key().as_ref(), &i.to_le_bytes()],
             &self.program_id,
         );
         pubkey
