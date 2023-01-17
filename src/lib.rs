@@ -21,7 +21,7 @@ pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
 pub const TICK_LIMIT: i32 = 44364;
 pub const TICKMAP_SIZE: i32 = 2 * TICK_LIMIT - 1;
 pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
-// pub const PROGRAM_ID: Pubkey = pubkey!("9aiirQKPZ2peE9QrXYmsbTtR7wSDJi2HkQdHuaMpTpei"); // Devnet
+// pub const PROGRAM_ID: Pubkey = pubkey!("9aiirQKPZ2peE9QrXYmsbTtR7wSDJi2HkQdHuaMpTpei"); // devnet
 pub const TICK_CROSSES_PER_IX: usize = 19;
 
 #[derive(Clone, Default)]
@@ -34,7 +34,7 @@ pub struct JupiterInvariant {
     ticks: HashMap<Pubkey, Tick>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct InvariantSwapAccounts {
     state: Pubkey,
     pool: Pubkey,
@@ -64,9 +64,13 @@ impl InvariantSwapAccounts {
     pub fn from_pubkeys(jupiter_invariant: &JupiterInvariant, invariant_swap_params: &InvariantSwapParams) -> Result<(Self, bool), Error> {
         let InvariantSwapParams { owner, source_mint, destination_mint, source_account, destination_account, referral_fee } = invariant_swap_params;
 
-        let (x_to_y, account_x, account_y) = match (jupiter_invariant.pool.token_x.eq(source_mint), jupiter_invariant.pool.token_y.eq(destination_mint)) {
-            (true, true) => (true, *source_account, *destination_account, ),
-            (false, true) => (false, *destination_account, *source_account),
+        let (x_to_y, account_x, account_y) = match (
+            jupiter_invariant.pool.token_x.eq(source_mint),
+            jupiter_invariant.pool.token_y.eq(destination_mint),
+            jupiter_invariant.pool.token_x.eq(destination_mint),
+            jupiter_invariant.pool.token_y.eq(source_mint)) {
+            (true, true, _, _) => (true, *source_account, *destination_account, ),
+            (_, _, true, true) => (false, *destination_account, *source_account),
             _ => return Err(Error::msg("Invalid source or destination mint")),
         };
         let max_ticks_account_size = if referral_fee.is_none() {
@@ -686,7 +690,6 @@ mod tests {
             "BWuHaUGmRKqGew1hffbCnfzkNNn4XLToyYp5zw8LiqSo",
             "EGLDBGNDaC1pr3iznmGDUSVLmFE8DGR1LruUHTwCFhhy",
         ];
-        // println!("len = {:?}", pool_addresses.len());
         let pubkeys: Vec<Pubkey> = pool_addresses.iter().map(|p| { return Pubkey::from_str(*p).unwrap(); }).collect::<Vec<Pubkey>>();
 
         rpc.get_multiple_accounts(&pubkeys[0..100]).unwrap().iter().enumerate().for_each(|(index, market_account)| {
@@ -711,6 +714,33 @@ mod tests {
             jupiter_invariant.ticks.iter().for_each(|(_, tick)| {
                 println!("{:?}", tick);
             });
+
+            let (user_transfer_authority, user_token_x_account, user_token_y_account) =
+                (Pubkey::new_unique(), Pubkey::new_unique(), Pubkey::new_unique());
+
+            for i in 0..2 {
+                let x_to_y = i % 2 == 0;
+
+                let (source_mint, user_source_token_account, destination_mint, user_destination_token_account) = if x_to_y {
+                    (jupiter_invariant.pool.token_x, user_token_x_account, jupiter_invariant.pool.token_y, user_token_y_account)
+                } else {
+                    (jupiter_invariant.pool.token_y, user_token_y_account, jupiter_invariant.pool.token_x, user_token_x_account)
+                };
+
+                let swap_params = SwapParams {
+                    source_mint,
+                    destination_mint,
+                    user_source_token_account,
+                    user_destination_token_account,
+                    user_transfer_authority,
+                    open_order_address: None,
+                    quote_mint_to_referrer: None,
+                    in_amount: 1, // amount doesn't matter, as the space for tickets is entirely filled.
+                };
+
+                let swap_leg_and_account_metas = jupiter_invariant.get_swap_leg_and_account_metas(&swap_params).unwrap();
+                println!("{:?}", swap_leg_and_account_metas.account_metas);
+            }
         });
     }
 
