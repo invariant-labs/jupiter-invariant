@@ -13,7 +13,7 @@ use invariant_types::decimals::*;
 use invariant_types::errors::InvariantErrorCode;
 use invariant_types::log::get_tick_at_sqrt_price;
 use invariant_types::math::{calculate_price_sqrt, compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
-use invariant_types::{SEED, STATE_SEED};
+use invariant_types::{SEED, STATE_SEED, TICK_SEED};
 use jupiter::jupiter_override::{Swap, SwapLeg};
 use solana_client::rpc_client::RpcClient;
 
@@ -51,12 +51,27 @@ pub struct InvariantSwapAccounts {
 }
 
 impl InvariantSwapAccounts {
-    pub fn from_pubkeys(jupiter_invariant: &JupiterInvariant, owner: &Pubkey, source_mint: &Pubkey, destination_mint: &Pubkey, source_account: &Pubkey, destination_account: &Pubkey) -> Result<(Self, bool), Error> {
+    pub fn from_pubkeys(jupiter_invariant: &JupiterInvariant, owner: &Pubkey, source_mint: &Pubkey, destination_mint: &Pubkey, source_account: &Pubkey, destination_account: &Pubkey, referral_fee: Option<Pubkey>) -> Result<(Self, bool), Error> {
         let (x_to_y, account_x, account_y) = match (jupiter_invariant.pool.token_x.eq(source_mint), jupiter_invariant.pool.token_y.eq(destination_mint)) {
             (true, true) => (true, *source_account, *destination_account, ),
             (false, true) => (false, *destination_account, *source_account),
             _ => return Err(Error::msg("Invalid source or destination mint")),
         };
+        let max_ticks_account_size = if referral_fee.is_none() {
+            TICK_CROSSES_PER_IX
+        } else {
+            TICK_CROSSES_PER_IX - 1
+        };
+        let (ticks_above_amount, ticks_below_amount) = if x_to_y {
+            (1, max_ticks_account_size - 1)
+        } else {
+            (max_ticks_account_size - 1, 1)
+        };
+
+        let tick_indexes_above = jupiter_invariant.find_closest_tick_indexes(ticks_above_amount, PriceDirection::UP);
+        let tick_indexes_below = jupiter_invariant.find_closest_tick_indexes(ticks_below_amount, PriceDirection::DOWN);
+        let all_tick_indexes = [tick_indexes_below, tick_indexes_above].concat();
+        let ticks_accounts = jupiter_invariant.tick_indexes_to_addresses(&all_tick_indexes);
 
         let invariant_swap_accounts = Self {
             state: Self::get_state_address(jupiter_invariant.program_id),
@@ -69,7 +84,8 @@ impl InvariantSwapAccounts {
             owner: *owner,
             program_authority: Self::get_program_authority(jupiter_invariant.program_id),
             token_program: spl_token::id(),
-            ..Default::default()
+            ticks_accounts,
+            referral_fee,
         };
 
         Ok((invariant_swap_accounts, x_to_y))
@@ -228,7 +244,8 @@ impl JupiterInvariant {
 
     fn tick_index_to_address(&self, i: i32) -> Pubkey {
         let (pubkey, _) = Pubkey::find_program_address(
-            &[b"tickv1", self.market_key.key().as_ref(), &i.to_le_bytes()],
+            &[TICK_SEED.as_bytes(), self.market_key.key().as_ref(), &i.to_le_bytes()],
+            // &[b"tickv1", self.market_key.key().as_ref(), &i.to_le_bytes()],
             &self.program_id,
         );
         pubkey
@@ -240,15 +257,15 @@ impl JupiterInvariant {
         //         println!("find non-zero byte");
         //     }
         // });
-        let above_addresses = self
+        let above_indexes = self
             .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
         // println!("above: {:?}", above_addresses);
 
-        let below_addresses = self
+        let below_indexes = self
             .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN);
         // println!("below: {:?}", below_addresses);
 
-        let all_indexes = [below_addresses, above_addresses].concat();
+        let all_indexes = [below_indexes, above_indexes].concat();
         // println!("all ticks indexes = {:?}", all_indexes);
         self.tick_indexes_to_addresses(&all_indexes)
     }
@@ -572,7 +589,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fetch_all_poo() {
+    fn test_fetch_all_pool() {
         let rpc = RpcClient::new("https://divine-multi-research.solana-devnet.discover.quiknode.pro/51c4bf9b6daf33ca9abf53799a89a17088f68a77");
         let pool_addresses = vec![
             "8krGUkrubzsymUFmy5ncJHiE5RwyDEWazvwfahii7UW1",
