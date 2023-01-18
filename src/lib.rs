@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::cell::RefCell;
 use anchor_lang::prelude::{AccountMeta, Pubkey};
 use anchor_lang::{AnchorDeserialize, Key};
-use invariant_types::structs::{MAX_TICK, Pool, Tick, Tickmap};
+use invariant_types::structs::{MAX_TICK, Pool, Tick, TICK_CROSSES_PER_IX, TICK_LIMIT, Tickmap, TICKMAP_SIZE};
 use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
 };
@@ -12,17 +12,13 @@ use anyhow::Error;
 use invariant_types::decimals::*;
 use invariant_types::errors::InvariantErrorCode;
 use invariant_types::log::get_tick_at_sqrt_price;
-use invariant_types::math::{calculate_price_sqrt, compute_swap_step, cross_tick, get_closer_limit, is_enough_amount_to_push_price, SwapResult};
-use invariant_types::{SEED, STATE_SEED, TICK_SEED};
+use invariant_types::math::{calculate_price_sqrt, compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price, is_enough_amount_to_push_price, SwapResult};
+use invariant_types::{ANCHOR_DISCRIMINATOR_SIZE, SEED, STATE_SEED, TICK_SEED};
 use jupiter::jupiter_override::{Swap, SwapLeg};
 use solana_client::rpc_client::RpcClient;
 
-pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
-pub const TICK_LIMIT: i32 = 44364;
-pub const TICKMAP_SIZE: i32 = 2 * TICK_LIMIT - 1;
-pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
-// pub const PROGRAM_ID: Pubkey = pubkey!("9aiirQKPZ2peE9QrXYmsbTtR7wSDJi2HkQdHuaMpTpei"); // devnet
-pub const TICK_CROSSES_PER_IX: usize = 19;
+// pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
+pub const PROGRAM_ID: Pubkey = pubkey!("9aiirQKPZ2peE9QrXYmsbTtR7wSDJi2HkQdHuaMpTpei"); // devnet
 
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
@@ -274,18 +270,6 @@ impl JupiterInvariant {
 
         self.tick_indexes_to_addresses(&all_indexes)
     }
-
-    fn get_max_sqrt_price(tick_spacing: u16) -> Price {
-        let limit_by_space = TICK_LIMIT.checked_sub(1).unwrap().checked_mul(tick_spacing.into()).unwrap();
-        let max_tick = limit_by_space.min(MAX_TICK);
-        calculate_price_sqrt(max_tick)
-    }
-
-    fn get_min_sqrt_price(tick_spacing: u16) -> Price {
-        let limit_by_space = (-TICK_LIMIT).checked_add(1).unwrap().checked_mul(tick_spacing.into()).unwrap();
-        let min_tick = limit_by_space.max(-MAX_TICK);
-        calculate_price_sqrt(min_tick)
-    }
 }
 
 impl Amm for JupiterInvariant {
@@ -336,7 +320,7 @@ impl Amm for JupiterInvariant {
         } = *quote_params;
         let x_to_y = input_mint.eq(&self.pool.token_x);
         let by_amount_in = true; // always by amount in
-        let sqrt_price_limit: Price = (if x_to_y { Self::get_min_sqrt_price(self.pool.tick_spacing) } else { Self::get_max_sqrt_price(self.pool.tick_spacing) });
+        let sqrt_price_limit: Price = (if x_to_y { get_min_sqrt_price(self.pool.tick_spacing) } else { get_max_sqrt_price(self.pool.tick_spacing) });
 
         let (expected_input_mint, expected_output_mint) = if x_to_y {
             (self.pool.token_x, self.pool.token_y)
@@ -732,30 +716,5 @@ mod tests {
                 println!("{:?}", swap_leg_and_account_metas.account_metas);
             }
         });
-    }
-
-    #[test]
-    fn test_price_limitation() {
-        let let_max_price = JupiterInvariant::get_max_sqrt_price(1);
-        assert_eq!(let_max_price, Price::new(9189293893553000000000000));
-        let let_max_price = JupiterInvariant::get_max_sqrt_price(2);
-        assert_eq!(let_max_price, Price::new(84443122262186000000000000));
-        let let_max_price = JupiterInvariant::get_max_sqrt_price(5);
-        assert_eq!(let_max_price, Price::new(65525554855399275000000000000));
-        let let_max_price = JupiterInvariant::get_max_sqrt_price(10);
-        assert_eq!(let_max_price, Price::new(65535383934512647000000000000));
-        let let_max_price = JupiterInvariant::get_max_sqrt_price(100);
-        assert_eq!(let_max_price, Price::new(65535383934512647000000000000));
-
-        let let_min_price = JupiterInvariant::get_min_sqrt_price(1);
-        assert_eq!(let_min_price, Price::new(108822289458000000000000));
-        let let_min_price = JupiterInvariant::get_min_sqrt_price(2);
-        assert_eq!(let_min_price, Price::new(11842290682000000000000));
-        let let_min_price = JupiterInvariant::get_min_sqrt_price(5);
-        assert_eq!(let_min_price, Price::new(15261221000000000000));
-        let let_min_price = JupiterInvariant::get_min_sqrt_price(10);
-        assert_eq!(let_min_price, Price::new(15258932000000000000));
-        let let_min_price = JupiterInvariant::get_min_sqrt_price(100);
-        assert_eq!(let_min_price, Price::new(15258932000000000000));
     }
 }
