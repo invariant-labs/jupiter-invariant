@@ -1,24 +1,23 @@
-use std::borrow::Borrow;
 use std::cell::RefCell;
-use anchor_lang::prelude::{AccountMeta, Pubkey};
+use std::collections::HashMap;
+
 use anchor_lang::{AnchorDeserialize, Key};
-use invariant_types::structs::{MAX_TICK, Pool, Tick, TICK_CROSSES_PER_IX, TICK_LIMIT, Tickmap, TICKMAP_SIZE};
+use anchor_lang::prelude::{AccountMeta, Pubkey};
+use anyhow::Error;
+use invariant_types::{ANCHOR_DISCRIMINATOR_SIZE, SEED, STATE_SEED, TICK_SEED};
+use invariant_types::decimals::*;
+use invariant_types::log::get_tick_at_sqrt_price;
+use invariant_types::math::{compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price, is_enough_amount_to_push_price, SwapResult};
+use invariant_types::structs::{Pool, Tick, TICK_CROSSES_PER_IX, TICK_LIMIT, Tickmap, TICKMAP_SIZE};
+use jupiter::jupiter_override::{Swap, SwapLeg};
 use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
 };
-use solana_sdk::pubkey;
-use std::collections::HashMap;
-use anyhow::Error;
-use invariant_types::decimals::*;
-use invariant_types::errors::InvariantErrorCode;
-use invariant_types::log::get_tick_at_sqrt_price;
-use invariant_types::math::{calculate_price_sqrt, compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price, is_enough_amount_to_push_price, SwapResult};
-use invariant_types::{ANCHOR_DISCRIMINATOR_SIZE, SEED, STATE_SEED, TICK_SEED};
-use jupiter::jupiter_override::{Swap, SwapLeg};
 use solana_client::rpc_client::RpcClient;
+use solana_sdk::pubkey;
 
-// pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
-pub const PROGRAM_ID: Pubkey = pubkey!("9aiirQKPZ2peE9QrXYmsbTtR7wSDJi2HkQdHuaMpTpei"); // devnet
+pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
+// pub const PROGRAM_ID: Pubkey = pubkey!("9aiirQKPZ2peE9QrXYmsbTtR7wSDJi2HkQdHuaMpTpei"); // devnet
 
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
@@ -65,7 +64,7 @@ impl InvariantSwapAccounts {
             jupiter_invariant.pool.token_y.eq(destination_mint),
             jupiter_invariant.pool.token_x.eq(destination_mint),
             jupiter_invariant.pool.token_y.eq(source_mint)) {
-            (true, true, _, _) => (true, *source_account, *destination_account, ),
+            (true, true, _, _) => (true, *source_account, *destination_account),
             (_, _, true, true) => (false, *destination_account, *source_account),
             _ => return Err(Error::msg("Invalid source or destination mint")),
         };
@@ -116,9 +115,9 @@ impl InvariantSwapAccounts {
             AccountMeta::new_readonly(self.program_authority, false),
             AccountMeta::new_readonly(self.token_program, false),
         ];
-        if self.referral_fee.is_some() {
-            account_metas.push(AccountMeta::new(self.referral_fee.unwrap(), false));
-        };
+        if let Some(referral_fee) = self.referral_fee {
+            account_metas.push(AccountMeta::new(referral_fee, false));
+        }
         let ticks_metas: Vec<AccountMeta> = self.ticks_accounts
             .iter()
             .map(|tick_address| AccountMeta::new(*tick_address, false))
@@ -180,6 +179,7 @@ impl JupiterInvariant {
         T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 
+    #[allow(dead_code)]
     fn fetch_accounts(rpc: &RpcClient, accounts_to_update: Vec<Pubkey>) -> HashMap<Pubkey, Vec<u8>> {
         rpc
             .get_multiple_accounts(&accounts_to_update)
@@ -207,10 +207,8 @@ impl JupiterInvariant {
             panic!("Invalid arguments: can't find initialized ticks")
         }
         let mut found: Vec<i32> = Vec::new();
-        let current_index = current.checked_div(tick_spacing).unwrap().checked_add(TICK_LIMIT).unwrap();
-        let mut above = current_index.checked_add(1).unwrap();
-        let mut below = current_index;
-        let mut reached_limit = false;
+        let current_index = current / tick_spacing + TICK_LIMIT;
+        let (mut above, mut below, mut reached_limit) = (current_index + 1, current_index, false);
 
         while !reached_limit && found.len() < amount_limit {
             match direction {
@@ -237,11 +235,9 @@ impl JupiterInvariant {
 
         // translate index in tickmap to price tick index
         found.iter().map(|i: &i32| {
-            let i = i.checked_sub(TICK_LIMIT).unwrap();
-            i.checked_mul(tick_spacing).unwrap()
+            (i - TICK_LIMIT) * tick_spacing
         }).collect()
     }
-
 
     fn tick_indexes_to_addresses(&self, indexes: &[i32]) -> Vec<Pubkey> {
         let pubkeys: Vec<Pubkey> = indexes
@@ -297,12 +293,13 @@ impl Amm for JupiterInvariant {
         let pool = Self::deserialize::<Pool>(market_account_data);
         let tickmap = Self::deserialize::<Tickmap>(tickmap_account_data);
 
-        let ticks = accounts_map.into_iter()
+        let ticks = accounts_map.iter()
             .filter(|(key, _)| !self.market_key.eq(key) && !self.pool.tickmap.eq(key))
-            .collect::<HashMap<&Pubkey, &Vec<u8>>>().into_iter().map(|(key, data)| {
-            let tick = Self::deserialize::<Tick>(data);
-            (*key, tick)
-        }).collect::<HashMap<Pubkey, Tick>>();
+            .map(|(key, data)| {
+                let tick = Self::deserialize::<Tick>(data);
+                (*key, tick)
+            })
+            .collect::<HashMap<Pubkey, Tick>>();
 
         self.ticks = ticks;
         self.pool = pool;
@@ -312,7 +309,6 @@ impl Amm for JupiterInvariant {
     }
 
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
-        // always by token_in
         let QuoteParams {
             in_amount,
             input_mint,
@@ -320,7 +316,7 @@ impl Amm for JupiterInvariant {
         } = *quote_params;
         let x_to_y = input_mint.eq(&self.pool.token_x);
         let by_amount_in = true; // always by amount in
-        let sqrt_price_limit: Price = (if x_to_y { get_min_sqrt_price(self.pool.tick_spacing) } else { get_max_sqrt_price(self.pool.tick_spacing) });
+        let sqrt_price_limit: Price = if x_to_y { get_min_sqrt_price(self.pool.tick_spacing) } else { get_max_sqrt_price(self.pool.tick_spacing) };
 
         let (expected_input_mint, expected_output_mint) = if x_to_y {
             (self.pool.token_x, self.pool.token_y)
@@ -328,22 +324,16 @@ impl Amm for JupiterInvariant {
             (self.pool.token_y, self.pool.token_x)
         };
         if !(input_mint.eq(&expected_input_mint) && output_mint.eq(&expected_output_mint)) {
-            panic!("Invalid quote params: token mints");
+            panic!("Invalid source or destination mint");
         }
 
         let calculate_amount_out = || -> Result<InvariantSwapResult, ()> {
-            let mut pool: RefCell<Pool> = RefCell::new(self.pool.clone());
-            let mut ticks: RefCell<HashMap<Pubkey, Tick>> = RefCell::new(self.ticks.clone());
-            let mut tickmap: RefCell<Tickmap> = RefCell::new(self.tickmap.clone());
-            let mut pool = pool.borrow_mut();
-            let mut tickmap = tickmap.borrow_mut();
-            let mut ticks = ticks.borrow_mut();
-            let mut remaining_amount = TokenAmount::new(in_amount);
-            let mut total_amount_in: TokenAmount = TokenAmount::new(0);
-            let mut total_amount_out: TokenAmount = TokenAmount::new(0);
-            let mut total_fee_amount: TokenAmount = TokenAmount::new(0);
-            let mut tick_required = 0;
-            let mut insufficient_liquidity = false;
+            let (mut pool, ticks, tickmap) =
+                (&mut self.pool.clone(), &self.ticks.clone(), &self.tickmap.clone());
+            let (mut remaining_amount, mut total_amount_in, mut total_amount_out, mut total_fee_amount) =
+                (TokenAmount::new(in_amount), TokenAmount::new(0), TokenAmount::new(0), TokenAmount::new(0));
+            let (mut tick_required, mut insufficient_liquidity) = (0, false);
+
             while !remaining_amount.is_zero() {
                 let (swap_limit, limiting_tick) =
                     get_closer_limit(sqrt_price_limit, x_to_y, pool.current_tick_index, pool.tick_spacing, &tickmap).unwrap();
@@ -375,8 +365,7 @@ impl Amm for JupiterInvariant {
 
                     if initialized {
                         let tick_address = self.tick_index_to_address(tick_index);
-                        let tick: Tick = (*self.ticks.get(&tick_address).unwrap()).clone();
-                        let mut tick = RefCell::new(tick);
+                        let tick = RefCell::new(*ticks.get(&tick_address).unwrap());
                         let mut tick = tick.borrow_mut();
 
                         // crossing tick
@@ -386,7 +375,6 @@ impl Amm for JupiterInvariant {
                             total_amount_in += remaining_amount;
                             remaining_amount = TokenAmount(0);
                         }
-                        ticks.insert(tick_address, tick.clone());
                         tick_required += 1;
                     }
                     // set tick to limit (below if price is going down, because current tick should always be below price)
@@ -405,7 +393,6 @@ impl Amm for JupiterInvariant {
                     pool.current_tick_index =
                         get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
                 }
-                // std::thread::sleep_ms(50);
             }
             Ok(InvariantSwapResult {
                 in_amount: total_amount_in.0,
@@ -488,19 +475,13 @@ impl Amm for JupiterInvariant {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Rem;
     use std::str::FromStr;
 
-    use super::*;
     use anchor_lang::prelude::Pubkey;
-    use anchor_lang::{AnchorDeserialize, AnchorSerialize};
-    use decimal::*;
-    use invariant_types::decimals::FixedPoint;
-    use invariant_types::structs::{FeeTier, Pool};
-    use solana_client::client_error::reqwest::blocking::get;
     use solana_client::rpc_client::RpcClient;
-    use solana_sdk::account::Account;
     use solana_sdk::pubkey;
+
+    use super::*;
 
     #[test]
     fn test_jupiter_invariant() {
