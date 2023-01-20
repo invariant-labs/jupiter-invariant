@@ -489,7 +489,7 @@ mod tests {
         const USDC_USDT_MARKET: Pubkey = pubkey!("BRt1iVYDNoohkL1upEb8UfHE8yji6gEDAmuN9Y4yekyc");
         const USDC: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
         const USDT: Pubkey = pubkey!("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
-        let rpc = RpcClient::new("https://tame-ancient-mountain.solana-mainnet.quiknode.pro/6a9a95bf7bbb108aea620e7ee4c1fd5e1b67cc62");
+        let rpc = RpcClient::new("https://api.mainnet-beta.solana.com");
         let pool_account = rpc.get_account(&USDC_USDT_MARKET).unwrap();
 
         let market_account = KeyedAccount {
@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn test_fetch_all_pool() {
-        let rpc = RpcClient::new("https://tame-ancient-mountain.solana-mainnet.quiknode.pro/6a9a95bf7bbb108aea620e7ee4c1fd5e1b67cc62");
+        let rpc = RpcClient::new("https://api.mainnet-beta.solana.com");
         let pool_addresses = vec![
             "966SEWSx1Dyx9hYMJxiUt3E2uer2HfdCgEmfBpkk5ovL",
             "6MC1F8kUvUMRo853ZFwhQVd5mSoLxmxN1Q2s724U3Gkd",
