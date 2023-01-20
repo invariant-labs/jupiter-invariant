@@ -1,14 +1,19 @@
+use anyhow::{Error, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use anchor_lang::{AnchorDeserialize, Key};
 use anchor_lang::prelude::{AccountMeta, Pubkey};
-use anyhow::Error;
-use invariant_types::{ANCHOR_DISCRIMINATOR_SIZE, SEED, STATE_SEED, TICK_SEED};
+use anchor_lang::{AnchorDeserialize, Key};
 use invariant_types::decimals::*;
 use invariant_types::log::get_tick_at_sqrt_price;
-use invariant_types::math::{compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price, is_enough_amount_to_push_price, SwapResult};
-use invariant_types::structs::{Pool, Tick, TICK_CROSSES_PER_IX, TICK_LIMIT, Tickmap, TICKMAP_SIZE};
+use invariant_types::math::{
+    compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price,
+    is_enough_amount_to_push_price, SwapResult,
+};
+use invariant_types::structs::{
+    Pool, Tick, Tickmap, TICKMAP_SIZE, TICK_CROSSES_PER_IX, TICK_LIMIT,
+};
+use invariant_types::{ANCHOR_DISCRIMINATOR_SIZE, SEED, STATE_SEED, TICK_SEED};
 use jupiter::jupiter_override::{Swap, SwapLeg};
 use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
@@ -55,14 +60,25 @@ pub struct InvariantSwapParams {
 }
 
 impl InvariantSwapAccounts {
-    pub fn from_pubkeys(jupiter_invariant: &JupiterInvariant, invariant_swap_params: &InvariantSwapParams) -> Result<(Self, bool), Error> {
-        let InvariantSwapParams { owner, source_mint, destination_mint, source_account, destination_account, referral_fee } = invariant_swap_params;
+    pub fn from_pubkeys(
+        jupiter_invariant: &JupiterInvariant,
+        invariant_swap_params: &InvariantSwapParams,
+    ) -> Result<(Self, bool), Error> {
+        let InvariantSwapParams {
+            owner,
+            source_mint,
+            destination_mint,
+            source_account,
+            destination_account,
+            referral_fee,
+        } = invariant_swap_params;
 
         let (x_to_y, account_x, account_y) = match (
             jupiter_invariant.pool.token_x.eq(source_mint),
             jupiter_invariant.pool.token_y.eq(destination_mint),
             jupiter_invariant.pool.token_x.eq(destination_mint),
-            jupiter_invariant.pool.token_y.eq(source_mint)) {
+            jupiter_invariant.pool.token_y.eq(source_mint),
+        ) {
             (true, true, _, _) => (true, *source_account, *destination_account),
             (_, _, true, true) => (false, *destination_account, *source_account),
             _ => return Err(Error::msg("Invalid source or destination mint")),
@@ -78,8 +94,10 @@ impl InvariantSwapAccounts {
             (max_ticks_account_size - 1, 1)
         };
 
-        let tick_indexes_above = jupiter_invariant.find_closest_tick_indexes(ticks_above_amount, PriceDirection::UP);
-        let tick_indexes_below = jupiter_invariant.find_closest_tick_indexes(ticks_below_amount, PriceDirection::DOWN);
+        let tick_indexes_above =
+            jupiter_invariant.find_closest_tick_indexes(ticks_above_amount, PriceDirection::UP);
+        let tick_indexes_below =
+            jupiter_invariant.find_closest_tick_indexes(ticks_below_amount, PriceDirection::DOWN);
         let all_tick_indexes = [tick_indexes_below, tick_indexes_above].concat();
         let ticks_accounts = jupiter_invariant.tick_indexes_to_addresses(&all_tick_indexes);
 
@@ -117,7 +135,8 @@ impl InvariantSwapAccounts {
         if let Some(referral_fee) = self.referral_fee {
             account_metas.push(AccountMeta::new(referral_fee, false));
         }
-        let ticks_metas: Vec<AccountMeta> = self.ticks_accounts
+        let ticks_metas: Vec<AccountMeta> = self
+            .ticks_accounts
             .iter()
             .map(|tick_address| AccountMeta::new(*tick_address, false))
             .collect();
@@ -127,17 +146,11 @@ impl InvariantSwapAccounts {
     }
 
     fn get_program_authority(program_id: Pubkey) -> Pubkey {
-        Pubkey::find_program_address(
-            &[SEED.as_bytes()],
-            &program_id,
-        ).0
+        Pubkey::find_program_address(&[SEED.as_bytes()], &program_id).0
     }
 
     fn get_state_address(program_id: Pubkey) -> Pubkey {
-        Pubkey::find_program_address(
-            &[STATE_SEED.as_bytes()],
-            &program_id,
-        ).0
+        Pubkey::find_program_address(&[STATE_SEED.as_bytes()], &program_id).0
     }
 }
 
@@ -155,7 +168,7 @@ struct InvariantSwapResult {
 }
 
 impl JupiterInvariant {
-    pub fn new_from_keyed_account(keyed_account: &KeyedAccount) -> Result<Self, ()> {
+    pub fn new_from_keyed_account(keyed_account: &KeyedAccount) -> Result<Self> {
         let pool = Self::deserialize::<Pool>(&keyed_account.account.data);
 
         Ok(Self {
@@ -172,16 +185,18 @@ impl JupiterInvariant {
     }
 
     fn deserialize<T>(data: &[u8]) -> T
-        where
-            T: AnchorDeserialize,
+    where
+        T: AnchorDeserialize,
     {
         T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
     }
 
     #[allow(dead_code)]
-    fn fetch_accounts(rpc: &RpcClient, accounts_to_update: Vec<Pubkey>) -> HashMap<Pubkey, Vec<u8>> {
-        rpc
-            .get_multiple_accounts(&accounts_to_update)
+    fn fetch_accounts(
+        rpc: &RpcClient,
+        accounts_to_update: Vec<Pubkey>,
+    ) -> HashMap<Pubkey, Vec<u8>> {
+        rpc.get_multiple_accounts(&accounts_to_update)
             .unwrap()
             .iter()
             .enumerate()
@@ -232,34 +247,36 @@ impl JupiterInvariant {
             }
         }
 
-        found.iter().map(|i: &i32| {
-            (i - TICK_LIMIT) * tick_spacing
-        }).collect()
+        found
+            .iter()
+            .map(|i: &i32| (i - TICK_LIMIT) * tick_spacing)
+            .collect()
     }
 
     fn tick_indexes_to_addresses(&self, indexes: &[i32]) -> Vec<Pubkey> {
         let pubkeys: Vec<Pubkey> = indexes
             .iter()
-            .map(|i| {
-                self.tick_index_to_address(*i)
-            })
+            .map(|i| self.tick_index_to_address(*i))
             .collect();
         pubkeys
     }
 
     fn tick_index_to_address(&self, i: i32) -> Pubkey {
         let (pubkey, _) = Pubkey::find_program_address(
-            &[TICK_SEED.as_bytes(), self.market_key.key().as_ref(), &i.to_le_bytes()],
+            &[
+                TICK_SEED.as_bytes(),
+                self.market_key.key().as_ref(),
+                &i.to_le_bytes(),
+            ],
             &self.program_id,
         );
         pubkey
     }
 
     fn get_ticks_addresses_around(&self) -> Vec<Pubkey> {
-        let above_indexes = self
-            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
-        let below_indexes = self
-            .find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN);
+        let above_indexes = self.find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
+        let below_indexes =
+            self.find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN);
         let all_indexes = [below_indexes, above_indexes].concat();
 
         self.tick_indexes_to_addresses(&all_indexes)
@@ -291,7 +308,8 @@ impl Amm for JupiterInvariant {
         let pool = Self::deserialize::<Pool>(market_account_data);
         let tickmap = Self::deserialize::<Tickmap>(tickmap_account_data);
 
-        let ticks = accounts_map.iter()
+        let ticks = accounts_map
+            .iter()
             .filter(|(key, _)| !self.market_key.eq(key) && !self.pool.tickmap.eq(key))
             .map(|(key, data)| {
                 let tick = Self::deserialize::<Tick>(data);
@@ -314,7 +332,11 @@ impl Amm for JupiterInvariant {
         } = *quote_params;
         let x_to_y = input_mint.eq(&self.pool.token_x);
         let by_amount_in = true; // always by amount in
-        let sqrt_price_limit: Price = if x_to_y { get_min_sqrt_price(self.pool.tick_spacing) } else { get_max_sqrt_price(self.pool.tick_spacing) };
+        let sqrt_price_limit: Price = if x_to_y {
+            get_min_sqrt_price(self.pool.tick_spacing)
+        } else {
+            get_max_sqrt_price(self.pool.tick_spacing)
+        };
 
         let (expected_input_mint, expected_output_mint) = if x_to_y {
             (self.pool.token_x, self.pool.token_y)
@@ -326,16 +348,41 @@ impl Amm for JupiterInvariant {
         }
 
         let calculate_amount_out = || -> Result<InvariantSwapResult, ()> {
-            let (mut pool, ticks, tickmap) =
-                (&mut self.pool.clone(), &self.ticks.clone(), &self.tickmap.clone());
-            let (mut remaining_amount, mut total_amount_in, mut total_amount_out, mut total_fee_amount) =
-                (TokenAmount::new(in_amount), TokenAmount::new(0), TokenAmount::new(0), TokenAmount::new(0));
+            let (mut pool, ticks, tickmap) = (
+                &mut self.pool.clone(),
+                &self.ticks.clone(),
+                &self.tickmap.clone(),
+            );
+            let (
+                mut remaining_amount,
+                mut total_amount_in,
+                mut total_amount_out,
+                mut total_fee_amount,
+            ) = (
+                TokenAmount::new(in_amount),
+                TokenAmount::new(0),
+                TokenAmount::new(0),
+                TokenAmount::new(0),
+            );
             let (mut tick_required, mut insufficient_liquidity) = (0, false);
 
             while !remaining_amount.is_zero() {
-                let (swap_limit, limiting_tick) =
-                    get_closer_limit(sqrt_price_limit, x_to_y, pool.current_tick_index, pool.tick_spacing, &tickmap).unwrap();
-                let result: SwapResult = compute_swap_step(pool.sqrt_price, swap_limit, pool.liquidity, remaining_amount, by_amount_in, pool.fee);
+                let (swap_limit, limiting_tick) = get_closer_limit(
+                    sqrt_price_limit,
+                    x_to_y,
+                    pool.current_tick_index,
+                    pool.tick_spacing,
+                    tickmap,
+                )
+                .unwrap();
+                let result: SwapResult = compute_swap_step(
+                    pool.sqrt_price,
+                    swap_limit,
+                    pool.liquidity,
+                    remaining_amount,
+                    by_amount_in,
+                    pool.fee,
+                );
 
                 remaining_amount -= result.amount_in + result.fee_amount;
                 pool.sqrt_price = result.next_price_sqrt;
@@ -343,7 +390,6 @@ impl Amm for JupiterInvariant {
                 total_amount_out += result.amount_out;
                 total_fee_amount += result.fee_amount;
 
-                // Fail if price would go over swap limit
                 if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
                     insufficient_liquidity = true;
                     break;
@@ -368,24 +414,26 @@ impl Amm for JupiterInvariant {
 
                         // crossing tick
                         if !x_to_y || is_enough_amount_to_cross {
-                            cross_tick(&mut tick, &mut pool).unwrap();
+                            cross_tick(&mut tick, pool).unwrap();
                         } else if !remaining_amount.is_zero() {
                             total_amount_in += remaining_amount;
                             remaining_amount = TokenAmount(0);
                         }
                         tick_required += 1;
                     }
-                    // set tick to limit (below if price is going down, because current tick should always be below price)
+
                     pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
                         tick_index.checked_sub(pool.tick_spacing as i32).unwrap()
                     } else {
                         tick_index
                     };
                 } else {
-                    if pool.current_tick_index
+                    if pool
+                        .current_tick_index
                         .checked_rem(pool.tick_spacing.into())
                         .unwrap()
-                        != 0 {
+                        != 0
+                    {
                         panic!("tick not divisible by spacing");
                     }
                     pool.current_tick_index =
@@ -424,12 +472,10 @@ impl Amm for JupiterInvariant {
                     ..Quote::default()
                 })
             }
-            Err(_err) => {
-                Ok(Quote {
-                    not_enough_liquidity: true,
-                    ..Quote::default()
-                })
-            }
+            Err(_err) => Ok(Quote {
+                not_enough_liquidity: true,
+                ..Quote::default()
+            }),
         }
     }
 
@@ -455,7 +501,8 @@ impl Amm for JupiterInvariant {
             referral_fee: None,
         };
 
-        let (invariant_swap_accounts, x_to_y) = InvariantSwapAccounts::from_pubkeys(&self, &invariant_swap_params)?;
+        let (invariant_swap_accounts, x_to_y) =
+            InvariantSwapAccounts::from_pubkeys(&self, &invariant_swap_params)?;
         let account_metas = invariant_swap_accounts.to_account_metas();
 
         Ok(SwapLegAndAccountMetas {
@@ -520,20 +567,31 @@ mod tests {
         let result = jupiter_invariant.quote(&quote).unwrap();
 
         println!("insufficient liquidity: {:?}", result.not_enough_liquidity);
-        println!("input amount: {:.6} USDC", result.in_amount as f64 / 10u64.pow(6) as f64);
-        println!("output amount: {:.6} USDT", result.out_amount as f64 / 10u64.pow(6) as f64);
-        println!("fee amount: {:.6} USDC", result.fee_amount as f64 / 10u64.pow(6) as f64);
+        println!(
+            "input amount: {:.6} USDC",
+            result.in_amount as f64 / 10u64.pow(6) as f64
+        );
+        println!(
+            "output amount: {:.6} USDT",
+            result.out_amount as f64 / 10u64.pow(6) as f64
+        );
+        println!(
+            "fee amount: {:.6} USDC",
+            result.fee_amount as f64 / 10u64.pow(6) as f64
+        );
 
-        let _swap_leg_and_account_metas = jupiter_invariant.get_swap_leg_and_account_metas(&SwapParams {
-            source_mint: quote.input_mint,
-            destination_mint: quote.output_mint,
-            user_destination_token_account: Pubkey::new_unique(),
-            user_source_token_account: Pubkey::new_unique(),
-            user_transfer_authority: Pubkey::new_unique(),
-            open_order_address: None,
-            quote_mint_to_referrer: None,
-            in_amount: quote.in_amount,
-        }).unwrap();
+        let _swap_leg_and_account_metas = jupiter_invariant
+            .get_swap_leg_and_account_metas(&SwapParams {
+                source_mint: quote.input_mint,
+                destination_mint: quote.output_mint,
+                user_destination_token_account: Pubkey::new_unique(),
+                user_source_token_account: Pubkey::new_unique(),
+                user_transfer_authority: Pubkey::new_unique(),
+                open_order_address: None,
+                quote_mint_to_referrer: None,
+                in_amount: quote.in_amount,
+            })
+            .unwrap();
     }
 
     #[test]
@@ -591,48 +649,78 @@ mod tests {
             "2keDsfcMY6hLvfrmzDAfnMSudMqYczPVcb8MSkK59P9r",
             "B2Mq1fpJ2bZYxxtF4yz6nNvLJLaYzM3zQsHcs2oDqk3z",
         ];
-        let pubkeys: Vec<Pubkey> = pool_addresses.iter().map(|p| { return Pubkey::from_str(*p).unwrap(); }).collect::<Vec<Pubkey>>();
+        let pubkeys: Vec<Pubkey> = pool_addresses
+            .iter()
+            .map(|p| {
+                return Pubkey::from_str(*p).unwrap();
+            })
+            .collect::<Vec<Pubkey>>();
 
-        rpc.get_multiple_accounts(&pubkeys).unwrap().iter().enumerate().for_each(|(index, market_account)| {
-            let key: Pubkey = pubkeys.get(index).unwrap().to_owned();
-            let account = market_account.to_owned().unwrap();
-            let mut jupiter_invariant =
-                JupiterInvariant::new_from_keyed_account(&KeyedAccount {
-                    key,
-                    account,
-                    params: None,
-                }).unwrap();
-            let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-            let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
-            jupiter_invariant.update(&accounts_map).unwrap();
-            let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-            let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
-            jupiter_invariant.update(&accounts_map).unwrap();
+        rpc.get_multiple_accounts(&pubkeys)
+            .unwrap()
+            .iter()
+            .enumerate()
+            .for_each(|(index, market_account)| {
+                let key: Pubkey = pubkeys.get(index).unwrap().to_owned();
+                let account = market_account.to_owned().unwrap();
+                let mut jupiter_invariant =
+                    JupiterInvariant::new_from_keyed_account(&KeyedAccount {
+                        key,
+                        account,
+                        params: None,
+                    })
+                    .unwrap();
+                let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+                let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
+                jupiter_invariant.update(&accounts_map).unwrap();
+                let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+                let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
+                jupiter_invariant.update(&accounts_map).unwrap();
 
-            let (user_transfer_authority, user_token_x_account, user_token_y_account) =
-                (Pubkey::new_unique(), Pubkey::new_unique(), Pubkey::new_unique());
+                let (user_transfer_authority, user_token_x_account, user_token_y_account) = (
+                    Pubkey::new_unique(),
+                    Pubkey::new_unique(),
+                    Pubkey::new_unique(),
+                );
 
-            for i in 0..2 {
-                let x_to_y = i % 2 == 0;
+                for i in 0..2 {
+                    let x_to_y = i % 2 == 0;
 
-                let (source_mint, user_source_token_account, destination_mint, user_destination_token_account) = if x_to_y {
-                    (jupiter_invariant.pool.token_x, user_token_x_account, jupiter_invariant.pool.token_y, user_token_y_account)
-                } else {
-                    (jupiter_invariant.pool.token_y, user_token_y_account, jupiter_invariant.pool.token_x, user_token_x_account)
-                };
+                    let (
+                        source_mint,
+                        user_source_token_account,
+                        destination_mint,
+                        user_destination_token_account,
+                    ) = if x_to_y {
+                        (
+                            jupiter_invariant.pool.token_x,
+                            user_token_x_account,
+                            jupiter_invariant.pool.token_y,
+                            user_token_y_account,
+                        )
+                    } else {
+                        (
+                            jupiter_invariant.pool.token_y,
+                            user_token_y_account,
+                            jupiter_invariant.pool.token_x,
+                            user_token_x_account,
+                        )
+                    };
 
-                let swap_params = SwapParams {
-                    source_mint,
-                    destination_mint,
-                    user_source_token_account,
-                    user_destination_token_account,
-                    user_transfer_authority,
-                    open_order_address: None,
-                    quote_mint_to_referrer: None,
-                    in_amount: 1, // amount doesn't matter, as the space for tickets is entirely filled.
-                };
-                let _swap_leg_and_account_metas = jupiter_invariant.get_swap_leg_and_account_metas(&swap_params).unwrap();
-            }
-        });
+                    let swap_params = SwapParams {
+                        source_mint,
+                        destination_mint,
+                        user_source_token_account,
+                        user_destination_token_account,
+                        user_transfer_authority,
+                        open_order_address: None,
+                        quote_mint_to_referrer: None,
+                        in_amount: 1, // amount doesn't matter, as the space for tickets is entirely filled.
+                    };
+                    let _swap_leg_and_account_metas = jupiter_invariant
+                        .get_swap_leg_and_account_metas(&swap_params)
+                        .unwrap();
+                }
+            });
     }
 }
