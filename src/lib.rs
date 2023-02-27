@@ -281,6 +281,109 @@ impl JupiterInvariant {
 
         self.tick_indexes_to_addresses(&all_indexes)
     }
+
+    fn simulate_invariant_swap(
+        &self,
+        in_amount: u64,
+        x_to_y: bool,
+        by_amount_in: bool,
+        sqrt_price_limit: Price,
+    ) -> Result<InvariantSwapResult, ()> {
+        let (mut pool, ticks, tickmap) = (
+            &mut self.pool.clone(),
+            &self.ticks.clone(),
+            &self.tickmap.clone(),
+        );
+        let (mut remaining_amount, mut total_amount_in, mut total_amount_out, mut total_fee_amount) = (
+            TokenAmount::new(in_amount),
+            TokenAmount::new(0),
+            TokenAmount::new(0),
+            TokenAmount::new(0),
+        );
+        let (mut tick_required, mut insufficient_liquidity) = (0, false);
+
+        while !remaining_amount.is_zero() {
+            let (swap_limit, limiting_tick) = get_closer_limit(
+                sqrt_price_limit,
+                x_to_y,
+                pool.current_tick_index,
+                pool.tick_spacing,
+                tickmap,
+            )
+            .unwrap();
+            let result: SwapResult = compute_swap_step(
+                pool.sqrt_price,
+                swap_limit,
+                pool.liquidity,
+                remaining_amount,
+                by_amount_in,
+                pool.fee,
+            );
+
+            remaining_amount -= result.amount_in + result.fee_amount;
+            pool.sqrt_price = result.next_price_sqrt;
+            total_amount_in += result.amount_in + result.fee_amount;
+            total_amount_out += result.amount_out;
+            total_fee_amount += result.fee_amount;
+
+            if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
+                insufficient_liquidity = true;
+                break;
+            }
+
+            // crossing tick
+            if result.next_price_sqrt == swap_limit && limiting_tick.is_some() {
+                let (tick_index, initialized) = limiting_tick.unwrap();
+                let is_enough_amount_to_cross = is_enough_amount_to_push_price(
+                    remaining_amount,
+                    result.next_price_sqrt,
+                    pool.liquidity,
+                    pool.fee,
+                    by_amount_in,
+                    x_to_y,
+                );
+
+                if initialized {
+                    let tick_address = self.tick_index_to_address(tick_index);
+                    let tick = RefCell::new(*ticks.get(&tick_address).unwrap());
+                    let mut tick = tick.borrow_mut();
+
+                    // crossing tick
+                    if !x_to_y || is_enough_amount_to_cross {
+                        cross_tick(&mut tick, pool).unwrap();
+                    } else if !remaining_amount.is_zero() {
+                        total_amount_in += remaining_amount;
+                        remaining_amount = TokenAmount(0);
+                    }
+                    tick_required += 1;
+                }
+
+                pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
+                    tick_index.checked_sub(pool.tick_spacing as i32).unwrap()
+                } else {
+                    tick_index
+                };
+            } else {
+                if pool
+                    .current_tick_index
+                    .checked_rem(pool.tick_spacing.into())
+                    .unwrap()
+                    != 0
+                {
+                    panic!("tick not divisible by spacing");
+                }
+                pool.current_tick_index =
+                    get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
+            }
+        }
+        Ok(InvariantSwapResult {
+            in_amount: total_amount_in.0,
+            out_amount: total_amount_out.0,
+            fee_amount: total_fee_amount.0,
+            tick_required,
+            insufficient_liquidity,
+        })
+    }
 }
 
 impl Amm for JupiterInvariant {
@@ -331,7 +434,6 @@ impl Amm for JupiterInvariant {
             output_mint,
         } = *quote_params;
         let x_to_y = input_mint.eq(&self.pool.token_x);
-        let by_amount_in = true; // always by amount in
         let sqrt_price_limit: Price = if x_to_y {
             get_min_sqrt_price(self.pool.tick_spacing)
         } else {
@@ -346,110 +448,8 @@ impl Amm for JupiterInvariant {
         if !(input_mint.eq(&expected_input_mint) && output_mint.eq(&expected_output_mint)) {
             panic!("Invalid source or destination mint");
         }
+        let result = self.simulate_invariant_swap(in_amount, x_to_y, true, sqrt_price_limit);
 
-        let calculate_amount_out = || -> Result<InvariantSwapResult, ()> {
-            let (mut pool, ticks, tickmap) = (
-                &mut self.pool.clone(),
-                &self.ticks.clone(),
-                &self.tickmap.clone(),
-            );
-            let (
-                mut remaining_amount,
-                mut total_amount_in,
-                mut total_amount_out,
-                mut total_fee_amount,
-            ) = (
-                TokenAmount::new(in_amount),
-                TokenAmount::new(0),
-                TokenAmount::new(0),
-                TokenAmount::new(0),
-            );
-            let (mut tick_required, mut insufficient_liquidity) = (0, false);
-
-            while !remaining_amount.is_zero() {
-                let (swap_limit, limiting_tick) = get_closer_limit(
-                    sqrt_price_limit,
-                    x_to_y,
-                    pool.current_tick_index,
-                    pool.tick_spacing,
-                    tickmap,
-                )
-                .unwrap();
-                let result: SwapResult = compute_swap_step(
-                    pool.sqrt_price,
-                    swap_limit,
-                    pool.liquidity,
-                    remaining_amount,
-                    by_amount_in,
-                    pool.fee,
-                );
-
-                remaining_amount -= result.amount_in + result.fee_amount;
-                pool.sqrt_price = result.next_price_sqrt;
-                total_amount_in += result.amount_in + result.fee_amount;
-                total_amount_out += result.amount_out;
-                total_fee_amount += result.fee_amount;
-
-                if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
-                    insufficient_liquidity = true;
-                    break;
-                }
-
-                // crossing tick
-                if result.next_price_sqrt == swap_limit && limiting_tick.is_some() {
-                    let (tick_index, initialized) = limiting_tick.unwrap();
-                    let is_enough_amount_to_cross = is_enough_amount_to_push_price(
-                        remaining_amount,
-                        result.next_price_sqrt,
-                        pool.liquidity,
-                        pool.fee,
-                        by_amount_in,
-                        x_to_y,
-                    );
-
-                    if initialized {
-                        let tick_address = self.tick_index_to_address(tick_index);
-                        let tick = RefCell::new(*ticks.get(&tick_address).unwrap());
-                        let mut tick = tick.borrow_mut();
-
-                        // crossing tick
-                        if !x_to_y || is_enough_amount_to_cross {
-                            cross_tick(&mut tick, pool).unwrap();
-                        } else if !remaining_amount.is_zero() {
-                            total_amount_in += remaining_amount;
-                            remaining_amount = TokenAmount(0);
-                        }
-                        tick_required += 1;
-                    }
-
-                    pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
-                        tick_index.checked_sub(pool.tick_spacing as i32).unwrap()
-                    } else {
-                        tick_index
-                    };
-                } else {
-                    if pool
-                        .current_tick_index
-                        .checked_rem(pool.tick_spacing.into())
-                        .unwrap()
-                        != 0
-                    {
-                        panic!("tick not divisible by spacing");
-                    }
-                    pool.current_tick_index =
-                        get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
-                }
-            }
-            Ok(InvariantSwapResult {
-                in_amount: total_amount_in.0,
-                out_amount: total_amount_out.0,
-                fee_amount: total_fee_amount.0,
-                tick_required,
-                insufficient_liquidity,
-            })
-        };
-
-        let result = calculate_amount_out();
         match result {
             Ok(result) => {
                 let InvariantSwapResult {
@@ -484,6 +484,7 @@ impl Amm for JupiterInvariant {
         swap_params: &SwapParams,
     ) -> anyhow::Result<SwapLegAndAccountMetas> {
         let SwapParams {
+            in_amount,
             destination_mint,
             source_mint,
             user_destination_token_account,
@@ -491,6 +492,8 @@ impl Amm for JupiterInvariant {
             user_transfer_authority,
             ..
         } = swap_params;
+
+        // simulate here
 
         let invariant_swap_params = InvariantSwapParams {
             owner: *user_transfer_authority,
