@@ -159,11 +159,11 @@ enum PriceDirection {
     DOWN,
 }
 
-struct InvariantSwapResult {
+struct InvariantSwapResult{
     in_amount: u64,
     out_amount: u64,
     fee_amount: u64,
-    tick_required: u16,
+    crossed_ticks: Vec<i32>,
     insufficient_liquidity: bool,
 }
 
@@ -300,7 +300,7 @@ impl JupiterInvariant {
             TokenAmount::new(0),
             TokenAmount::new(0),
         );
-        let (mut tick_required, mut insufficient_liquidity) = (0, false);
+        let (mut crossed_ticks, mut insufficient_liquidity) = (Vec::new(), false);
 
         while !remaining_amount.is_zero() {
             let (swap_limit, limiting_tick) = get_closer_limit(
@@ -351,11 +351,11 @@ impl JupiterInvariant {
                     // crossing tick
                     if !x_to_y || is_enough_amount_to_cross {
                         cross_tick(&mut tick, pool).unwrap();
+                        crossed_ticks.push(tick.index);
                     } else if !remaining_amount.is_zero() {
                         total_amount_in += remaining_amount;
                         remaining_amount = TokenAmount(0);
                     }
-                    tick_required += 1;
                 }
 
                 pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
@@ -380,7 +380,7 @@ impl JupiterInvariant {
             in_amount: total_amount_in.0,
             out_amount: total_amount_out.0,
             fee_amount: total_fee_amount.0,
-            tick_required,
+            crossed_ticks,
             insufficient_liquidity,
         })
     }
@@ -456,13 +456,13 @@ impl Amm for JupiterInvariant {
                     in_amount,
                     out_amount,
                     fee_amount,
-                    tick_required,
+                    crossed_ticks,
                     insufficient_liquidity,
                 } = result;
                 let not_enough_liquidity = if insufficient_liquidity {
                     true
                 } else {
-                    tick_required >= TICK_CROSSES_PER_IX as u16
+                    crossed_ticks.len() >= TICK_CROSSES_PER_IX
                 };
                 Ok(Quote {
                     in_amount,
