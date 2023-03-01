@@ -59,6 +59,13 @@ pub struct InvariantSwapParams {
     referral_fee: Option<Pubkey>,
 }
 
+struct InvariantSimulationParams {
+    in_amount: u64,
+    x_to_y: bool,
+    by_amount_in: bool,
+    sqrt_price_limit: Price   
+}
+
 impl InvariantSwapAccounts {
     pub fn from_pubkeys(
         jupiter_invariant: &JupiterInvariant,
@@ -281,6 +288,31 @@ impl JupiterInvariant {
 
         self.tick_indexes_to_addresses(&all_indexes)
     }
+
+    // fn quote_to_invarinat_params(&self, quote_params: &QuoteParams) -> ()) {
+    //     let QuoteParams {
+    //         in_amount,
+    //         input_mint,
+    //         output_mint,
+    //     } = *quote_params;
+
+    //     let x_to_y = input_mint.eq(&self.pool.token_x);
+    //     let sqrt_price_limit: Price = if x_to_y {
+    //         get_min_sqrt_price(self.pool.tick_spacing)
+    //     } else {
+    //         get_max_sqrt_price(self.pool.tick_spacing)
+    //     };
+
+    //     let (expected_input_mint, expected_output_mint) = if x_to_y {
+    //         (self.pool.token_x, self.pool.token_y)
+    //     } else {
+    //         (self.pool.token_y, self.pool.token_x)
+    //     };
+    //     if !(input_mint.eq(&expected_input_mint) && output_mint.eq(&expected_output_mint)) {
+    //         panic!("Invalid source or destination mint");
+    //     }
+    //     (in_amount. x_to_y, true, sqrt_price_limit)
+    // }
 
     fn simulate_invariant_swap(
         &self,
