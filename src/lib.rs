@@ -63,7 +63,7 @@ struct InvariantSimulationParams {
     in_amount: u64,
     x_to_y: bool,
     by_amount_in: bool,
-    sqrt_price_limit: Price   
+    sqrt_price_limit: Price,
 }
 
 impl InvariantSwapAccounts {
@@ -166,7 +166,7 @@ enum PriceDirection {
     DOWN,
 }
 
-struct InvariantSwapResult{
+struct InvariantSwapResult {
     in_amount: u64,
     out_amount: u64,
     fee_amount: u64,
@@ -289,38 +289,47 @@ impl JupiterInvariant {
         self.tick_indexes_to_addresses(&all_indexes)
     }
 
-    // fn quote_to_invarinat_params(&self, quote_params: &QuoteParams) -> ()) {
-    //     let QuoteParams {
-    //         in_amount,
-    //         input_mint,
-    //         output_mint,
-    //     } = *quote_params;
+    fn quote_to_invarinat_params(&self, quote_params: &QuoteParams) -> InvariantSimulationParams {
+        let QuoteParams {
+            in_amount,
+            input_mint,
+            output_mint,
+        } = *quote_params;
 
-    //     let x_to_y = input_mint.eq(&self.pool.token_x);
-    //     let sqrt_price_limit: Price = if x_to_y {
-    //         get_min_sqrt_price(self.pool.tick_spacing)
-    //     } else {
-    //         get_max_sqrt_price(self.pool.tick_spacing)
-    //     };
+        let x_to_y = input_mint.eq(&self.pool.token_x);
+        let sqrt_price_limit: Price = if x_to_y {
+            get_min_sqrt_price(self.pool.tick_spacing)
+        } else {
+            get_max_sqrt_price(self.pool.tick_spacing)
+        };
 
-    //     let (expected_input_mint, expected_output_mint) = if x_to_y {
-    //         (self.pool.token_x, self.pool.token_y)
-    //     } else {
-    //         (self.pool.token_y, self.pool.token_x)
-    //     };
-    //     if !(input_mint.eq(&expected_input_mint) && output_mint.eq(&expected_output_mint)) {
-    //         panic!("Invalid source or destination mint");
-    //     }
-    //     (in_amount. x_to_y, true, sqrt_price_limit)
-    // }
+        let (expected_input_mint, expected_output_mint) = if x_to_y {
+            (self.pool.token_x, self.pool.token_y)
+        } else {
+            (self.pool.token_y, self.pool.token_x)
+        };
+        if !(input_mint.eq(&expected_input_mint) && output_mint.eq(&expected_output_mint)) {
+            panic!("Invalid source or destination mint");
+        }
+        InvariantSimulationParams {
+            x_to_y,
+            in_amount,
+            by_amount_in: true,
+            sqrt_price_limit,
+        }
+    }
 
     fn simulate_invariant_swap(
         &self,
-        in_amount: u64,
-        x_to_y: bool,
-        by_amount_in: bool,
-        sqrt_price_limit: Price,
+        invariant_simulation_params: &InvariantSimulationParams,
     ) -> Result<InvariantSwapResult, ()> {
+        let InvariantSimulationParams {
+            in_amount,
+            x_to_y,
+            sqrt_price_limit,
+            by_amount_in,
+        } = *invariant_simulation_params;
+
         let (mut pool, ticks, tickmap) = (
             &mut self.pool.clone(),
             &self.ticks.clone(),
@@ -460,29 +469,10 @@ impl Amm for JupiterInvariant {
     }
 
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
-        let QuoteParams {
-            in_amount,
-            input_mint,
-            output_mint,
-        } = *quote_params;
-        let x_to_y = input_mint.eq(&self.pool.token_x);
-        let sqrt_price_limit: Price = if x_to_y {
-            get_min_sqrt_price(self.pool.tick_spacing)
-        } else {
-            get_max_sqrt_price(self.pool.tick_spacing)
-        };
+        let invariant_simulation_params = self.quote_to_invarinat_params(quote_params);
+        let simulation_result = self.simulate_invariant_swap(&invariant_simulation_params);
 
-        let (expected_input_mint, expected_output_mint) = if x_to_y {
-            (self.pool.token_x, self.pool.token_y)
-        } else {
-            (self.pool.token_y, self.pool.token_x)
-        };
-        if !(input_mint.eq(&expected_input_mint) && output_mint.eq(&expected_output_mint)) {
-            panic!("Invalid source or destination mint");
-        }
-        let result = self.simulate_invariant_swap(in_amount, x_to_y, true, sqrt_price_limit);
-
-        match result {
+        match simulation_result {
             Ok(result) => {
                 let InvariantSwapResult {
                     in_amount,
