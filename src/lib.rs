@@ -520,9 +520,20 @@ impl Amm for JupiterInvariant {
             input_mint: source_mint,
             output_mint: destination_mint,
         };
-
         let invarinat_simulation_params = self.quote_to_invarinat_params(&quote_params);
-        let _simulation_result = self.simulate_invariant_swap(&invarinat_simulation_params);
+        let simulation_result = self.simulate_invariant_swap(&invarinat_simulation_params);
+
+        if let Err(_) = simulation_result {
+            return Err(anyhow::anyhow!("simulation error"));
+        }
+
+        if let Ok(InvariantSwapResult {
+            insufficient_liquidity: true,
+            ..
+        }) = simulation_result
+        {
+            return Err(anyhow::anyhow!("insufficient liquidity"));
+        }
 
         let invariant_swap_params = InvariantSwapParams {
             owner: user_transfer_authority,
