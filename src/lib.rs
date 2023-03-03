@@ -513,16 +513,23 @@ impl Amm for JupiterInvariant {
             user_source_token_account,
             user_transfer_authority,
             ..
-        } = swap_params;
+        } = *swap_params;
 
-        // simulate here
+        let quote_params = QuoteParams {
+            in_amount,
+            input_mint: source_mint,
+            output_mint: destination_mint,
+        };
+
+        let invarinat_simulation_params = self.quote_to_invarinat_params(&quote_params);
+        let _simulation_result = self.simulate_invariant_swap(&invarinat_simulation_params);
 
         let invariant_swap_params = InvariantSwapParams {
-            owner: *user_transfer_authority,
-            source_mint: *source_mint,
-            destination_mint: *destination_mint,
-            source_account: *user_source_token_account,
-            destination_account: *user_destination_token_account,
+            owner: user_transfer_authority,
+            source_mint,
+            destination_mint,
+            source_account: user_source_token_account,
+            destination_account: user_destination_token_account,
             referral_fee: None,
         };
 
