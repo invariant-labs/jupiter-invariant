@@ -90,6 +90,7 @@ impl InvariantSwapAccounts {
             (_, _, true, true) => (false, *destination_account, *source_account),
             _ => return Err(Error::msg("Invalid source or destination mint")),
         };
+        // Change option
         let max_ticks_account_size = if referral_fee.is_none() {
             TICK_CROSSES_PER_IX
         } else {
@@ -171,8 +172,29 @@ struct InvariantSwapResult {
     out_amount: u64,
     fee_amount: u64,
     crossed_ticks: Vec<i32>,
-    exceeded_cu: bool,
-    insufficient_liquidity: bool,
+    global_insufficient_liquidity: bool,
+}
+
+impl InvariantSwapResult {
+    pub fn is_exceeded_cu(&self) -> bool {
+        self.is_exceeded_cu_referal(true)
+    }
+
+    pub fn is_not_enoght_liquidity(&self) -> bool {
+        self.is_not_enoght_liquidity_referal(true)
+    }
+
+    pub fn is_exceeded_cu_referal(&self, is_referal: bool) -> bool {
+        let mut max_cross = TICK_CROSSES_PER_IX;
+        if is_referal {
+            max_cross -= 1;
+        }
+        self.crossed_ticks.len() >= max_cross
+    }
+
+    pub fn is_not_enoght_liquidity_referal(&self, is_referal: bool) -> bool {
+        self.is_exceeded_cu_referal(is_referal) || self.global_insufficient_liquidity
+    }
 }
 
 impl JupiterInvariant {
@@ -342,7 +364,7 @@ impl JupiterInvariant {
             TokenAmount::new(0),
             TokenAmount::new(0),
         );
-        let (mut crossed_ticks, mut insufficient_liquidity) = (Vec::new(), false);
+        let (mut crossed_ticks, mut global_insufficient_liquidity) = (Vec::new(), false);
 
         while !remaining_amount.is_zero() {
             let (swap_limit, limiting_tick) = get_closer_limit(
@@ -369,7 +391,7 @@ impl JupiterInvariant {
             total_fee_amount += result.fee_amount;
 
             if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
-                insufficient_liquidity = true;
+                global_insufficient_liquidity = true;
                 break;
             }
 
@@ -418,25 +440,13 @@ impl JupiterInvariant {
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
             }
         }
-        let exceeded_cu = crossed_ticks.len() >= TICK_CROSSES_PER_IX;
-
         Ok(InvariantSwapResult {
             in_amount: total_amount_in.0,
             out_amount: total_amount_out.0,
             fee_amount: total_fee_amount.0,
             crossed_ticks,
-            exceeded_cu,
-            insufficient_liquidity,
+            global_insufficient_liquidity,
         })
-    }
-
-    fn is_not_enoght_liquidity(&self, invariant_swap_result: &InvariantSwapResult) -> bool {
-        let InvariantSwapResult {
-            insufficient_liquidity,
-            exceeded_cu,
-            ..
-        } = *invariant_swap_result;
-        insufficient_liquidity || exceeded_cu
     }
 }
 
@@ -487,13 +497,13 @@ impl Amm for JupiterInvariant {
 
         match simulation_result {
             Ok(result) => {
+                let not_enough_liquidity = result.is_not_enoght_liquidity();
                 let InvariantSwapResult {
                     in_amount,
                     out_amount,
                     fee_amount,
                     ..
                 } = result;
-                let not_enough_liquidity = self.is_not_enoght_liquidity(&result);
                 let quote = Quote {
                     in_amount,
                     out_amount,
@@ -537,7 +547,7 @@ impl Amm for JupiterInvariant {
         }
         let simulation_result = simulation_result.unwrap();
 
-        if self.is_not_enoght_liquidity(&simulation_result) {
+        if simulation_result.is_not_enoght_liquidity() {
             return Err(anyhow::anyhow!("insufficient liquidity"));
         }
         let InvariantSwapResult {
