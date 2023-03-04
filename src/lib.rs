@@ -49,8 +49,9 @@ pub struct InvariantSwapAccounts {
     referral_fee: Option<Pubkey>,
 }
 
-#[derive(Clone, Default)]
-pub struct InvariantSwapParams {
+#[derive(Clone)]
+pub struct InvariantSwapParams<'a> {
+    invariant_swap_result: &'a InvariantSwapResult,
     owner: Pubkey,
     source_mint: Pubkey,
     destination_mint: Pubkey,
@@ -72,6 +73,7 @@ impl InvariantSwapAccounts {
         invariant_swap_params: &InvariantSwapParams,
     ) -> Result<(Self, bool), Error> {
         let InvariantSwapParams {
+            invariant_swap_result,
             owner,
             source_mint,
             destination_mint,
@@ -90,24 +92,9 @@ impl InvariantSwapAccounts {
             (_, _, true, true) => (false, *destination_account, *source_account),
             _ => return Err(Error::msg("Invalid source or destination mint")),
         };
-        // Change option
-        let max_ticks_account_size = if referral_fee.is_none() {
-            TICK_CROSSES_PER_IX
-        } else {
-            TICK_CROSSES_PER_IX - 1
-        };
-        let (ticks_above_amount, ticks_below_amount) = if x_to_y {
-            (1, max_ticks_account_size - 1)
-        } else {
-            (max_ticks_account_size - 1, 1)
-        };
-
-        let tick_indexes_above =
-            jupiter_invariant.find_closest_tick_indexes(ticks_above_amount, PriceDirection::UP);
-        let tick_indexes_below =
-            jupiter_invariant.find_closest_tick_indexes(ticks_below_amount, PriceDirection::DOWN);
-        let all_tick_indexes = [tick_indexes_below, tick_indexes_above].concat();
-        let ticks_accounts = jupiter_invariant.tick_indexes_to_addresses(&all_tick_indexes);
+        // ppossibility update: add one tick in the opposite direction to swap direction
+        let ticks_accounts =
+            jupiter_invariant.tick_indexes_to_addresses(&invariant_swap_result.crossed_ticks);
 
         let invariant_swap_accounts = Self {
             state: Self::get_state_address(jupiter_invariant.program_id),
@@ -167,6 +154,7 @@ enum PriceDirection {
     DOWN,
 }
 
+#[derive(Clone, Default)]
 struct InvariantSwapResult {
     in_amount: u64,
     out_amount: u64,
@@ -176,10 +164,6 @@ struct InvariantSwapResult {
 }
 
 impl InvariantSwapResult {
-    pub fn is_exceeded_cu(&self) -> bool {
-        self.is_exceeded_cu_referal(true)
-    }
-
     pub fn is_not_enoght_liquidity(&self) -> bool {
         self.is_not_enoght_liquidity_referal(true)
     }
@@ -540,22 +524,18 @@ impl Amm for JupiterInvariant {
             output_mint: destination_mint,
         };
         let invarinat_simulation_params = self.quote_to_invarinat_params(&quote_params);
-        let simulation_result = self.simulate_invariant_swap(&invarinat_simulation_params);
+        let invariant_swap_result = self.simulate_invariant_swap(&invarinat_simulation_params);
 
-        if let Err(_) = simulation_result {
+        if let Err(_) = invariant_swap_result {
             return Err(anyhow::anyhow!("simulation error"));
         }
-        let simulation_result = simulation_result.unwrap();
-
-        if simulation_result.is_not_enoght_liquidity() {
+        let invariant_swap_result = invariant_swap_result.unwrap();
+        if invariant_swap_result.is_not_enoght_liquidity() {
             return Err(anyhow::anyhow!("insufficient liquidity"));
         }
-        let InvariantSwapResult {
-            crossed_ticks: _crossed_ticks,
-            ..
-        } = simulation_result;
 
         let invariant_swap_params = InvariantSwapParams {
+            invariant_swap_result: &invariant_swap_result,
             owner: user_transfer_authority,
             source_mint,
             destination_mint,
