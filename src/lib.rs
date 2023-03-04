@@ -171,6 +171,7 @@ struct InvariantSwapResult {
     out_amount: u64,
     fee_amount: u64,
     crossed_ticks: Vec<i32>,
+    exceeded_cu: bool,
     insufficient_liquidity: bool,
 }
 
@@ -417,13 +418,25 @@ impl JupiterInvariant {
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
             }
         }
+        let exceeded_cu = crossed_ticks.len() >= TICK_CROSSES_PER_IX;
+
         Ok(InvariantSwapResult {
             in_amount: total_amount_in.0,
             out_amount: total_amount_out.0,
             fee_amount: total_fee_amount.0,
             crossed_ticks,
+            exceeded_cu,
             insufficient_liquidity,
         })
+    }
+
+    fn is_not_enoght_liquidity(&self, invariant_swap_result: &InvariantSwapResult) -> bool {
+        let InvariantSwapResult {
+            insufficient_liquidity,
+            exceeded_cu,
+            ..
+        } = *invariant_swap_result;
+        insufficient_liquidity || exceeded_cu
     }
 }
 
@@ -478,21 +491,17 @@ impl Amm for JupiterInvariant {
                     in_amount,
                     out_amount,
                     fee_amount,
-                    crossed_ticks,
-                    insufficient_liquidity,
+                    ..
                 } = result;
-                let not_enough_liquidity = if insufficient_liquidity {
-                    true
-                } else {
-                    crossed_ticks.len() >= TICK_CROSSES_PER_IX
-                };
-                Ok(Quote {
+                let not_enough_liquidity = self.is_not_enoght_liquidity(&result);
+                let quote = Quote {
                     in_amount,
                     out_amount,
                     fee_amount,
                     not_enough_liquidity,
                     ..Quote::default()
-                })
+                };
+                Ok(quote)
             }
             Err(_err) => Ok(Quote {
                 not_enough_liquidity: true,
@@ -526,14 +535,15 @@ impl Amm for JupiterInvariant {
         if let Err(_) = simulation_result {
             return Err(anyhow::anyhow!("simulation error"));
         }
+        let simulation_result = simulation_result.unwrap();
 
-        if let Ok(InvariantSwapResult {
-            insufficient_liquidity: true,
-            ..
-        }) = simulation_result
-        {
+        if self.is_not_enoght_liquidity(&simulation_result) {
             return Err(anyhow::anyhow!("insufficient liquidity"));
         }
+        let InvariantSwapResult {
+            crossed_ticks: _crossed_ticks,
+            ..
+        } = simulation_result;
 
         let invariant_swap_params = InvariantSwapParams {
             owner: user_transfer_authority,
