@@ -171,14 +171,16 @@ impl InvariantSwapResult {
     }
 
     pub fn is_exceeded_cu_referal(&self, is_referal: bool) -> bool {
+        let crossed_amount = self.crossed_ticks.len();
         let mut max_cross = TICK_CROSSES_PER_IX;
         if is_referal {
             max_cross -= 1;
         }
+        let is_excceded_by_account_size = crossed_amount > max_cross;
+        let is_excceded_by_compute_units =
+            crossed_amount == max_cross && self.virtual_cross_counter > MAX_VIRTUAL_CROSS;
 
-        (self.crossed_ticks.len() > max_cross)
-            || self.crossed_ticks.len() == max_cross
-                && self.virtual_cross_counter > MAX_VIRTUAL_CROSS
+        is_excceded_by_account_size || is_excceded_by_compute_units
     }
 
     pub fn is_not_enoght_liquidity_referal(&self, is_referal: bool) -> bool {
