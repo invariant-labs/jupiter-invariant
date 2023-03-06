@@ -22,6 +22,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey;
 
 pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
+pub const MAX_VIRTUAL_CROSS: u16 = 10; // can be moved to invariant-core
 
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
@@ -160,6 +161,7 @@ struct InvariantSwapResult {
     out_amount: u64,
     fee_amount: u64,
     crossed_ticks: Vec<i32>,
+    virtual_cross_counter: u16,
     global_insufficient_liquidity: bool,
 }
 
@@ -169,11 +171,16 @@ impl InvariantSwapResult {
     }
 
     pub fn is_exceeded_cu_referal(&self, is_referal: bool) -> bool {
+        let crossed_amount = self.crossed_ticks.len();
         let mut max_cross = TICK_CROSSES_PER_IX;
         if is_referal {
             max_cross -= 1;
         }
-        self.crossed_ticks.len() >= max_cross
+        let is_excceded_by_account_size = crossed_amount > max_cross;
+        let is_excceded_by_compute_units =
+            crossed_amount == max_cross && self.virtual_cross_counter > MAX_VIRTUAL_CROSS;
+
+        is_excceded_by_account_size || is_excceded_by_compute_units
     }
 
     pub fn is_not_enoght_liquidity_referal(&self, is_referal: bool) -> bool {
@@ -348,7 +355,8 @@ impl JupiterInvariant {
             TokenAmount::new(0),
             TokenAmount::new(0),
         );
-        let (mut crossed_ticks, mut global_insufficient_liquidity) = (Vec::new(), false);
+        let (mut crossed_ticks, mut virtual_cross_counter, mut global_insufficient_liquidity) =
+            (Vec::new(), 0u16, false);
 
         while !remaining_amount.is_zero() {
             let (swap_limit, limiting_tick) = get_closer_limit(
@@ -404,6 +412,8 @@ impl JupiterInvariant {
                         total_amount_in += remaining_amount;
                         remaining_amount = TokenAmount(0);
                     }
+                } else {
+                    virtual_cross_counter += 1;
                 }
 
                 pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
@@ -422,6 +432,7 @@ impl JupiterInvariant {
                 }
                 pool.current_tick_index =
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
+                virtual_cross_counter += 1;
             }
         }
         Ok(InvariantSwapResult {
@@ -429,6 +440,7 @@ impl JupiterInvariant {
             out_amount: total_amount_out.0,
             fee_amount: total_fee_amount.0,
             crossed_ticks,
+            virtual_cross_counter,
             global_insufficient_liquidity,
         })
     }
