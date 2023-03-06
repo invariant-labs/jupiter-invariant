@@ -92,7 +92,7 @@ impl InvariantSwapAccounts {
             (_, _, true, true) => (false, *destination_account, *source_account),
             _ => return Err(Error::msg("Invalid source or destination mint")),
         };
-        // ppossibility update: add one tick in the opposite direction to swap direction
+        // possibility update: add one tick in the opposite direction to swap direction
         let ticks_accounts =
             jupiter_invariant.tick_indexes_to_addresses(&invariant_swap_result.crossed_ticks);
 
