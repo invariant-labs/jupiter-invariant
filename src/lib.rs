@@ -160,6 +160,7 @@ struct InvariantSwapResult {
     out_amount: u64,
     fee_amount: u64,
     crossed_ticks: Vec<i32>,
+    virtual_cross_counter: u16,
     global_insufficient_liquidity: bool,
 }
 
@@ -348,7 +349,8 @@ impl JupiterInvariant {
             TokenAmount::new(0),
             TokenAmount::new(0),
         );
-        let (mut crossed_ticks, mut global_insufficient_liquidity) = (Vec::new(), false);
+        let (mut crossed_ticks, mut virtual_cross_counter, mut global_insufficient_liquidity) =
+            (Vec::new(), 0u16, false);
 
         while !remaining_amount.is_zero() {
             let (swap_limit, limiting_tick) = get_closer_limit(
@@ -404,6 +406,8 @@ impl JupiterInvariant {
                         total_amount_in += remaining_amount;
                         remaining_amount = TokenAmount(0);
                     }
+                } else {
+                    virtual_cross_counter += 1;
                 }
 
                 pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
@@ -422,6 +426,7 @@ impl JupiterInvariant {
                 }
                 pool.current_tick_index =
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
+                virtual_cross_counter += 1;
             }
         }
         Ok(InvariantSwapResult {
@@ -429,6 +434,7 @@ impl JupiterInvariant {
             out_amount: total_amount_out.0,
             fee_amount: total_fee_amount.0,
             crossed_ticks,
+            virtual_cross_counter,
             global_insufficient_liquidity,
         })
     }
