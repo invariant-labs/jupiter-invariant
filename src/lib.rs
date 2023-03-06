@@ -22,6 +22,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey;
 
 pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
+pub const MAX_VIRTUAL_CROSS: u16 = 10; // can be moved to invariant-core
 
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
@@ -174,7 +175,10 @@ impl InvariantSwapResult {
         if is_referal {
             max_cross -= 1;
         }
-        self.crossed_ticks.len() >= max_cross
+
+        (self.crossed_ticks.len() > max_cross)
+            || self.crossed_ticks.len() == max_cross
+                && self.virtual_cross_counter > MAX_VIRTUAL_CROSS
     }
 
     pub fn is_not_enoght_liquidity_referal(&self, is_referal: bool) -> bool {
