@@ -592,14 +592,11 @@ mod tests {
         const USDC_USDT_MARKET: Pubkey = pubkey!("BRt1iVYDNoohkL1upEb8UfHE8yji6gEDAmuN9Y4yekyc");
         const USDC: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
         const USDT: Pubkey = pubkey!("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
-        let mut rpc_url: String = RPC_MAINNET_CLINET.to_string();
-        let args = std::env::args();
-        for arg in args {
-            if arg.starts_with("rpc") {
-                let tmp: &str = arg.split('=').collect::<Vec<_>>()[1];
-                rpc_url = tmp.to_string();
-            }
-        }
+        let rpc_url = std::env::args()
+            .filter(|arg| arg.starts_with("rpc="))
+            .map(|arg| arg.split_at(4).1.to_string())
+            .next()
+            .unwrap_or_else(|| RPC_MAINNET_CLINET.to_string());
         let rpc = RpcClient::new(rpc_url);
 
         let pool_account = rpc.get_account(&USDC_USDT_MARKET).unwrap();
