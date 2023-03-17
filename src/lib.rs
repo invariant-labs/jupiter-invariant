@@ -22,6 +22,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey;
 
 pub const PROGRAM_ID: Pubkey = pubkey!("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
+pub const RPC_MAINNET_CLINET: &str = "https://api.mainnet-beta.solana.com";
 pub const MAX_VIRTUAL_CROSS: u16 = 10; // can be moved to invariant-core
 
 #[derive(Clone, Default)]
@@ -591,7 +592,16 @@ mod tests {
         const USDC_USDT_MARKET: Pubkey = pubkey!("BRt1iVYDNoohkL1upEb8UfHE8yji6gEDAmuN9Y4yekyc");
         const USDC: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
         const USDT: Pubkey = pubkey!("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
-        let rpc = RpcClient::new("https://api.mainnet-beta.solana.com");
+        let mut rpc_url: String = RPC_MAINNET_CLINET.to_string();
+        let args = std::env::args();
+        for arg in args {
+            if arg.starts_with("rpc") {
+                let tmp: &str = arg.split('=').collect::<Vec<_>>()[1];
+                rpc_url = tmp.to_string();
+            }
+        }
+        let rpc = RpcClient::new(rpc_url);
+
         let pool_account = rpc.get_account(&USDC_USDT_MARKET).unwrap();
 
         let market_account = KeyedAccount {
