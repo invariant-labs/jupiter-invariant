@@ -13,4 +13,8 @@ input amount: 1.000000 USDC
 output amount: 1.000056 USDT
 fee amount: 0.000010 USDC
 ```
+The RPC provided by Solana on the mainnet is used by default. If you encounter connection issues with the RPC, you can manually specify it using the following command:
+```bash
+cargo test test_jupiter_invariant -- --nocapture "rpc=https://your-rpc.com/..."
+```
 
