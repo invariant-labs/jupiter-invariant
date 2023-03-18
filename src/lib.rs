@@ -191,7 +191,7 @@ impl InvariantSwapResult {
 
 impl JupiterInvariant {
     pub fn new_from_keyed_account(keyed_account: &KeyedAccount) -> Result<Self> {
-        let pool = Self::deserialize::<Pool>(&keyed_account.account.data);
+        let pool = Self::deserialize::<Pool>(&keyed_account.account.data)?;
 
         Ok(Self {
             program_id: PROGRAM_ID,
@@ -206,11 +206,12 @@ impl JupiterInvariant {
         data.split_at(ANCHOR_DISCRIMINATOR_SIZE).1
     }
 
-    fn deserialize<T>(data: &[u8]) -> T
+    fn deserialize<T>(data: &[u8]) -> anyhow::Result<T>
     where
         T: AnchorDeserialize,
     {
-        T::try_from_slice(Self::extract_from_anchor_account(data)).unwrap()
+        T::try_from_slice(Self::extract_from_anchor_account(data))
+            .map_err(|e| anyhow::anyhow!("Error deserializing account data: {:?}", e))
     }
 
     #[allow(dead_code)]
@@ -467,19 +468,24 @@ impl Amm for JupiterInvariant {
     }
 
     fn update(&mut self, accounts_map: &HashMap<Pubkey, Vec<u8>>) -> anyhow::Result<()> {
-        let market_account_data: &[u8] = accounts_map.get(&self.market_key).unwrap();
-        let tickmap_account_data: &[u8] = accounts_map.get(&self.pool.tickmap).unwrap();
-        let pool = Self::deserialize::<Pool>(market_account_data);
-        let tickmap = Self::deserialize::<Tickmap>(tickmap_account_data);
+        let market_account_data: &[u8] = accounts_map
+            .get(&self.market_key)
+            .ok_or_else(|| anyhow::anyhow!("Market account data not found"))?;
+        let tickmap_account_data: &[u8] = accounts_map
+            .get(&self.pool.tickmap)
+            .ok_or_else(|| anyhow::anyhow!("Tickmap account data not found"))?;
+
+        let pool = Self::deserialize::<Pool>(market_account_data)?;
+        let tickmap = Self::deserialize::<Tickmap>(tickmap_account_data)?;
 
         let ticks = accounts_map
             .iter()
             .filter(|(key, _)| !self.market_key.eq(key) && !self.pool.tickmap.eq(key))
             .map(|(key, data)| {
-                let tick = Self::deserialize::<Tick>(data);
-                (*key, tick)
+                let tick = Self::deserialize::<Tick>(data)?;
+                Ok((*key, tick))
             })
-            .collect::<HashMap<Pubkey, Tick>>();
+            .collect::<Result<HashMap<Pubkey, Tick>>>()?;
 
         self.ticks = ticks;
         self.pool = pool;
