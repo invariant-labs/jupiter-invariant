@@ -305,7 +305,10 @@ impl JupiterInvariant {
         self.tick_indexes_to_addresses(&all_indexes)
     }
 
-    fn quote_to_invarinat_params(&self, quote_params: &QuoteParams) -> InvariantSimulationParams {
+    fn quote_to_invarinat_params(
+        &self,
+        quote_params: &QuoteParams,
+    ) -> anyhow::Result<InvariantSimulationParams> {
         let QuoteParams {
             in_amount,
             input_mint,
@@ -325,14 +328,14 @@ impl JupiterInvariant {
             (self.pool.token_y, self.pool.token_x)
         };
         if !(input_mint.eq(&expected_input_mint) && output_mint.eq(&expected_output_mint)) {
-            panic!("Invalid source or destination mint");
+            return Err(anyhow::anyhow!("Invalid source or destination mint"));
         }
-        InvariantSimulationParams {
+        Ok(InvariantSimulationParams {
             x_to_y,
             in_amount,
             by_amount_in: true,
             sqrt_price_limit,
-        }
+        })
     }
 
     fn simulate_invariant_swap(
@@ -361,14 +364,20 @@ impl JupiterInvariant {
             (Vec::new(), 0u16, false);
 
         while !remaining_amount.is_zero() {
-            let (swap_limit, limiting_tick) = get_closer_limit(
+            let (swap_limit, limiting_tick) = match get_closer_limit(
                 sqrt_price_limit,
                 x_to_y,
                 pool.current_tick_index,
                 pool.tick_spacing,
                 tickmap,
-            )
-            .unwrap();
+            ) {
+                Ok((swap_limit, limiting_tick)) => (swap_limit, limiting_tick),
+                Err(_) => {
+                    global_insufficient_liquidity = true;
+                    break;
+                }
+            };
+
             let result: SwapResult = compute_swap_step(
                 pool.sqrt_price,
                 swap_limit,
@@ -495,7 +504,7 @@ impl Amm for JupiterInvariant {
     }
 
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
-        let invariant_simulation_params = self.quote_to_invarinat_params(quote_params);
+        let invariant_simulation_params = self.quote_to_invarinat_params(quote_params)?;
         let simulation_result = self.simulate_invariant_swap(&invariant_simulation_params);
 
         match simulation_result {
