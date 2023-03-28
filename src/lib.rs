@@ -73,7 +73,7 @@ impl InvariantSwapAccounts {
     pub fn from_pubkeys(
         jupiter_invariant: &JupiterInvariant,
         invariant_swap_params: &InvariantSwapParams,
-    ) -> Result<(Self, bool), Error> {
+    ) -> anyhow::Result<(Self, bool), Error> {
         let InvariantSwapParams {
             invariant_swap_result,
             owner,
@@ -92,7 +92,7 @@ impl InvariantSwapAccounts {
         ) {
             (true, true, _, _) => (true, *source_account, *destination_account),
             (_, _, true, true) => (false, *destination_account, *source_account),
-            _ => return Err(Error::msg("Invalid source or destination mint")),
+            _ => return Err(anyhow::Error::msg("Invalid source or destination mint")),
         };
         // possibility update: add one tick in the opposite direction to swap direction
         let ticks_accounts =
@@ -341,7 +341,7 @@ impl JupiterInvariant {
     fn simulate_invariant_swap(
         &self,
         invariant_simulation_params: &InvariantSimulationParams,
-    ) -> Result<InvariantSwapResult, ()> {
+    ) -> Result<InvariantSwapResult, &str> {
         let InvariantSimulationParams {
             in_amount,
             x_to_y,
@@ -417,7 +417,8 @@ impl JupiterInvariant {
 
                     // crossing tick
                     if !x_to_y || is_enough_amount_to_cross {
-                        cross_tick(&mut tick, pool).unwrap();
+                        cross_tick(&mut tick, pool)
+                            .map_err(|_| "Internal Invariant Error: Cross tick")?;
                         crossed_ticks.push(tick.index);
                     } else if !remaining_amount.is_zero() {
                         total_amount_in += remaining_amount;
@@ -439,7 +440,7 @@ impl JupiterInvariant {
                     .unwrap()
                     != 0
                 {
-                    panic!("tick not divisible by spacing");
+                    return Err("Internal Invariant Error: Invalid tick");
                 }
                 pool.current_tick_index =
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
@@ -551,7 +552,7 @@ impl Amm for JupiterInvariant {
             input_mint: source_mint,
             output_mint: destination_mint,
         };
-        let invarinat_simulation_params = self.quote_to_invarinat_params(&quote_params);
+        let invarinat_simulation_params = self.quote_to_invarinat_params(&quote_params)?;
         let invariant_swap_result = self.simulate_invariant_swap(&invarinat_simulation_params);
 
         if let Err(_) = invariant_swap_result {
