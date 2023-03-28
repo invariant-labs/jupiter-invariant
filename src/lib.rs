@@ -615,6 +615,22 @@ mod tests {
             .unwrap_or_else(|| RPC_MAINNET_CLINET.to_string());
         let rpc = RpcClient::new(rpc_url);
 
+        let (mut input_mint, mut input_mint_ticker, mut output_mint, mut output_mint_ticker) =
+            (USDC, "USDC", USDT, "USDT");
+        if let Some(_) = std::env::args().find(|arg| arg.starts_with("dir=reversed")) {
+            (
+                input_mint,
+                input_mint_ticker,
+                output_mint,
+                output_mint_ticker,
+            ) = (
+                output_mint,
+                output_mint_ticker,
+                input_mint,
+                input_mint_ticker,
+            );
+        }
+
         let pool_account = rpc.get_account(&USDC_USDT_MARKET).unwrap();
 
         let market_account = KeyedAccount {
@@ -639,23 +655,26 @@ mod tests {
 
         let quote = QuoteParams {
             in_amount: 1 * 10u64.pow(6),
-            input_mint: USDC,
-            output_mint: USDT,
+            input_mint,
+            output_mint,
         };
         let result = jupiter_invariant.quote(&quote).unwrap();
 
         println!("insufficient liquidity: {:?}", result.not_enough_liquidity);
         println!(
-            "input amount: {:.6} USDC",
-            result.in_amount as f64 / 10u64.pow(6) as f64
+            "input amount: {:.6} {}",
+            result.in_amount as f64 / 10u64.pow(6) as f64,
+            input_mint_ticker
         );
         println!(
-            "output amount: {:.6} USDT",
-            result.out_amount as f64 / 10u64.pow(6) as f64
+            "output amount: {:.6} {}",
+            result.out_amount as f64 / 10u64.pow(6) as f64,
+            output_mint_ticker
         );
         println!(
-            "fee amount: {:.6} USDC",
-            result.fee_amount as f64 / 10u64.pow(6) as f64
+            "fee amount: {:.6} {}",
+            result.fee_amount as f64 / 10u64.pow(6) as f64,
+            input_mint_ticker
         );
 
         let _swap_leg_and_account_metas = jupiter_invariant
