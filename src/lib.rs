@@ -614,21 +614,10 @@ mod tests {
             .next()
             .unwrap_or_else(|| RPC_MAINNET_CLINET.to_string());
         let rpc = RpcClient::new(rpc_url);
-
-        let (mut input_mint, mut input_mint_ticker, mut output_mint, mut output_mint_ticker) =
-            (USDC, "USDC", USDT, "USDT");
+        let mut input_mint = (USDC, stringify!(USDC));
+        let mut output_mint = (USDT, stringify!(USDT));
         if let Some(_) = std::env::args().find(|arg| arg.starts_with("dir=reversed")) {
-            (
-                input_mint,
-                input_mint_ticker,
-                output_mint,
-                output_mint_ticker,
-            ) = (
-                output_mint,
-                output_mint_ticker,
-                input_mint,
-                input_mint_ticker,
-            );
+            (input_mint, output_mint) = (output_mint, input_mint);
         }
 
         let pool_account = rpc.get_account(&USDC_USDT_MARKET).unwrap();
@@ -655,8 +644,8 @@ mod tests {
 
         let quote = QuoteParams {
             in_amount: 1 * 10u64.pow(6),
-            input_mint,
-            output_mint,
+            input_mint: input_mint.0,
+            output_mint: output_mint.0,
         };
         let result = jupiter_invariant.quote(&quote).unwrap();
 
@@ -664,17 +653,17 @@ mod tests {
         println!(
             "input amount: {:.6} {}",
             result.in_amount as f64 / 10u64.pow(6) as f64,
-            input_mint_ticker
+            input_mint.1
         );
         println!(
             "output amount: {:.6} {}",
             result.out_amount as f64 / 10u64.pow(6) as f64,
-            output_mint_ticker
+            output_mint.1
         );
         println!(
             "fee amount: {:.6} {}",
             result.fee_amount as f64 / 10u64.pow(6) as f64,
-            input_mint_ticker
+            input_mint.1
         );
 
         let _swap_leg_and_account_metas = jupiter_invariant
