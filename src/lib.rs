@@ -1,5 +1,5 @@
-pub mod invariant_accounts;
-pub mod swap_simulation;
+pub mod accounts;
+pub mod swap;
 mod tests;
 pub mod utiles;
 
@@ -7,10 +7,10 @@ use anchor_lang::prelude::*;
 use anyhow::Result;
 use std::collections::HashMap;
 
-use invariant_accounts::{InvariantSwapAccounts, InvariantSwapParams};
+use accounts::{InvariantSwapAccounts, InvariantSwapParams};
 use invariant_types::structs::{Pool, Tick, Tickmap};
 use invariant_types::ID;
-use swap_simulation::InvariantSwapResult;
+use swap::InvariantSwapResult;
 
 use jupiter::jupiter_override::{Swap, SwapLeg};
 use jupiter_core::amm::{
