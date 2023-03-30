@@ -1,18 +1,15 @@
-use jupiter_core::amm::{Amm, KeyedAccount, QuoteParams, SwapParams};
-
-pub const RPC_MAINNET_CLINET: &str = "https://api.mainnet-beta.solana.com";
-
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use anchor_lang::prelude::Pubkey;
     use solana_client::rpc_client::RpcClient;
     use solana_sdk::pubkey;
 
+    use jupiter_core::amm::{Amm, KeyedAccount, QuoteParams, SwapParams};
+    use std::str::FromStr;
+
     use crate::JupiterInvariant;
 
-    use super::*;
+    const RPC_MAINNET_CLINET: &str = "https://api.mainnet-beta.solana.com";
 
     #[test]
     fn test_jupiter_invariant() {

@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anyhow::{Error, Result};
+use anyhow::Error;
 use invariant_types::{SEED, STATE_SEED};
 
 use crate::{swap_simulation::InvariantSwapResult, JupiterInvariant};

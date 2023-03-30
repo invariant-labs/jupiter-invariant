@@ -3,31 +3,19 @@ pub mod swap_simulation;
 mod tests;
 pub mod utiles;
 
-use anyhow::{Error, Result};
-use invariant_accounts::{InvariantSwapAccounts, InvariantSwapParams};
-use std::cell::RefCell;
+use anchor_lang::prelude::*;
+use anyhow::Result;
 use std::collections::HashMap;
-use swap_simulation::{InvariantSimulationParams, InvariantSwapResult};
 
-use anchor_lang::prelude::{AccountMeta, Pubkey};
-use anchor_lang::{AnchorDeserialize, Key};
-use invariant_types::decimals::*;
-use invariant_types::log::get_tick_at_sqrt_price;
-use invariant_types::math::{
-    compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price,
-    is_enough_amount_to_push_price, SwapResult,
-};
-use invariant_types::structs::{
-    Pool, Tick, Tickmap, TICKMAP_SIZE, TICK_CROSSES_PER_IX, TICK_LIMIT,
-};
-use invariant_types::{
-    ANCHOR_DISCRIMINATOR_SIZE, ID, MAX_VIRTUAL_CROSS, SEED, STATE_SEED, TICK_SEED,
-};
+use invariant_accounts::{InvariantSwapAccounts, InvariantSwapParams};
+use invariant_types::structs::{Pool, Tick, Tickmap};
+use invariant_types::ID;
+use swap_simulation::InvariantSwapResult;
+
 use jupiter::jupiter_override::{Swap, SwapLeg};
 use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
 };
-use solana_client::rpc_client::RpcClient;
 
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {

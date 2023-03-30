@@ -28,7 +28,6 @@ impl JupiterInvariant {
             .map_err(|e| anyhow::anyhow!("Error deserializing account data: {:?}", e))
     }
 
-    #[allow(dead_code)]
     pub fn fetch_accounts(
         rpc: &RpcClient,
         accounts_to_update: Vec<Pubkey>,
