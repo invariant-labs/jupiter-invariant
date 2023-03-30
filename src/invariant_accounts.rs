@@ -2,7 +2,18 @@ use anchor_lang::prelude::*;
 use anyhow::{Error, Result};
 use invariant_types::{SEED, STATE_SEED};
 
-use crate::{InvariantSwapParams, JupiterInvariant};
+use crate::{swap_simulation::InvariantSwapResult, JupiterInvariant};
+
+#[derive(Clone)]
+pub struct InvariantSwapParams<'a> {
+    pub invariant_swap_result: &'a InvariantSwapResult,
+    pub owner: Pubkey,
+    pub source_mint: Pubkey,
+    pub destination_mint: Pubkey,
+    pub source_account: Pubkey,
+    pub destination_account: Pubkey,
+    pub referral_fee: Option<Pubkey>,
+}
 
 #[derive(Clone, Default, Debug)]
 pub struct InvariantSwapAccounts {
