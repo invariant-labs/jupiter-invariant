@@ -4,18 +4,19 @@ Implements of the `Amm` trait defined [here](https://github.com/jup-ag/rust-amm-
 
 ## Tests
 
-The following command will run the test:
+To run the test, use the following command:
 ```shell
 cargo test test_jupiter_invariant -- --nocapture
 ```
-The result is quote for selling 1 USDC on USDC/USDT Invariant market. Example response:
+The result is a quote for selling 1 USDC on the USDC/USDT Invariant market. Here's an example response:
 ```
 insufficient liquidity: false
 input amount: 1.000000 USDC
 output amount: 1.000056 USDT
 fee amount: 0.000010 USDC
 ```
-In case you want to reverse the swap direction, you should use this command:
+
+If you want to reverse the swap direction, use this command:
 ```shell
 cargo test test_jupiter_invariant -- --nocapture "dir=reversed"
 ```
@@ -24,7 +25,8 @@ The RPC provided by Solana on the mainnet is used by default. If you encounter c
 ```bash
 cargo test test_jupiter_invariant -- --nocapture "rpc=https://your-rpc.com/..."
 ```
-It is possible to combine both parameters:
+
+You can combine both parameters:
 ```bash
 cargo test test_jupiter_invariant -- --nocapture "dir=reversed" "rpc=https://your-rpc.com/..."
 ```
