@@ -133,7 +133,7 @@ impl Amm for JupiterInvariant {
 
         let referral_fee: Option<Pubkey> = match quote_mint_to_referrer {
             Some(referral) => referral.get(&source_mint).copied(),
-            None => None,
+            _ => None,
         };
 
         let quote_params = QuoteParams {
@@ -142,12 +142,13 @@ impl Amm for JupiterInvariant {
             output_mint: *destination_mint,
         };
         let invarinat_simulation_params = self.quote_to_invarinat_params(&quote_params)?;
-        let invariant_swap_result = self.simulate_invariant_swap(&invarinat_simulation_params);
+        let invariant_swap_result = self
+            .simulate_invariant_swap(&invarinat_simulation_params)
+            .map_err(|e| anyhow::anyhow!("Simulation error: {}", e))?;
 
-        if let Err(_) = invariant_swap_result {
-            return Err(anyhow::anyhow!("simulation error"));
+        if invariant_swap_result.ticks_accounts_outdated {
+            return Err(anyhow::anyhow!("ticks accounts outdated"));
         }
-        let invariant_swap_result = invariant_swap_result.unwrap();
         if invariant_swap_result.is_not_enoght_liquidity() {
             return Err(anyhow::anyhow!("insufficient liquidity"));
         }
