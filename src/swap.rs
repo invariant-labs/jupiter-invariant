@@ -29,14 +29,15 @@ pub struct InvariantSwapResult {
     pub crossed_ticks: Vec<i32>,
     pub virtual_cross_counter: u16,
     pub global_insufficient_liquidity: bool,
+    pub ticks_accounts_outdated: bool,
 }
 
 impl InvariantSwapResult {
     pub fn is_not_enoght_liquidity(&self) -> bool {
-        self.is_not_enoght_liquidity_referal(true)
+        self.is_not_enoght_liquidity_referal(true) || self.ticks_accounts_outdated
     }
 
-    pub fn is_exceeded_cu_referal(&self, is_referal: bool) -> bool {
+    fn is_exceeded_cu_referal(&self, is_referal: bool) -> bool {
         let crossed_amount = self.crossed_ticks.len();
         let mut max_cross = TICK_CROSSES_PER_IX;
         if is_referal {
@@ -49,7 +50,7 @@ impl InvariantSwapResult {
         is_excceded_by_account_size || is_excceded_by_compute_units
     }
 
-    pub fn is_not_enoght_liquidity_referal(&self, is_referal: bool) -> bool {
+    fn is_not_enoght_liquidity_referal(&self, is_referal: bool) -> bool {
         self.is_exceeded_cu_referal(is_referal) || self.global_insufficient_liquidity
     }
 }
@@ -110,8 +111,12 @@ impl JupiterInvariant {
             TokenAmount::new(0),
             TokenAmount::new(0),
         );
-        let (mut crossed_ticks, mut virtual_cross_counter, mut global_insufficient_liquidity) =
-            (Vec::new(), 0u16, false);
+        let (
+            mut crossed_ticks,
+            mut virtual_cross_counter,
+            mut global_insufficient_liquidity,
+            mut ticks_accounts_outdated,
+        ) = (Vec::new(), 0u16, false, false);
 
         while !remaining_amount.is_zero() {
             let (swap_limit, limiting_tick) = match get_closer_limit(
@@ -162,7 +167,13 @@ impl JupiterInvariant {
 
                 if initialized {
                     let tick_address = self.tick_index_to_address(tick_index);
-                    let tick = RefCell::new(*ticks.get(&tick_address).unwrap());
+                    let tick = match ticks.get(&tick_address) {
+                        Some(tick) => RefCell::new(*tick),
+                        None => {
+                            ticks_accounts_outdated = true;
+                            break;
+                        }
+                    };
                     let mut tick = tick.borrow_mut();
 
                     // crossing tick
@@ -204,6 +215,7 @@ impl JupiterInvariant {
             crossed_ticks,
             virtual_cross_counter,
             global_insufficient_liquidity,
+            ticks_accounts_outdated,
         })
     }
 }
