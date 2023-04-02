@@ -5,7 +5,7 @@ mod tests {
     use solana_sdk::pubkey;
 
     use jupiter_core::amm::{Amm, KeyedAccount, QuoteParams, SwapParams};
-    use std::str::FromStr;
+    use std::{collections::HashMap, str::FromStr};
 
     use crate::JupiterInvariant;
 
@@ -89,7 +89,10 @@ mod tests {
                 user_source_token_account: Pubkey::new_unique(),
                 user_transfer_authority: Pubkey::new_unique(),
                 open_order_address: None,
-                quote_mint_to_referrer: None,
+                quote_mint_to_referrer: Some(HashMap::from([(
+                    quote.input_mint,
+                    Pubkey::new_unique(),
+                )])),
                 in_amount: quote.in_amount,
             })
             .unwrap();
