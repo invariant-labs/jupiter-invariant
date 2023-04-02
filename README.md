@@ -35,7 +35,7 @@ It's crucial to take into account how frequently accounts are updated when a lib
 
 The invariant design differs from the classic AMM by featuring a different architecture that makes it impossible to determine all the required accounts before fetching a tickmap account. Consequently, a minimum of two chained fetches of account batches is needed. The first fetch should contain all accounts except for tick accounts, while the second fetch should contain tick accounts. It should be noted that updating all accounts twice will yield the same outcome.
 
-In the case of a high-frequency update (few seconds or less), a single fetch of accounts is sufficient since the tickmap rarely changes. However, a double initial fetch is still required. In the case of a single account update, after initialization, the quote will return an insufficient liquidity result unless the swap amount is small enough that it does not cross any ticks.
+In the case of high-frequency updates (few seconds or less), a single fetch of accounts is sufficient since the tickmap rarely changes. However, a double initial fetch is still required. In the case of a single account update after initialization, the quote will return an insufficient liquidity result unless the swap amount is small enough that it does not cross any ticks.
 
 If the frequency of account refresh is lower, it is recommended to check whether accounts are outdated after updating accounts. For this purpose, the JupiterInvariant::get_accounts_to_update() function has been added. Below is an example code snippet that updates accounts until the tick accounts are up-to-date:
 ```rust
