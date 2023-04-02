@@ -34,7 +34,7 @@ pub struct InvariantSwapResult {
 
 impl InvariantSwapResult {
     pub fn is_not_enoght_liquidity(&self) -> bool {
-        self.is_not_enoght_liquidity_referal(true) || self.ticks_accounts_outdated
+        self.ticks_accounts_outdated || self.is_not_enoght_liquidity_referal(true)
     }
 
     fn is_exceeded_cu_referal(&self, is_referal: bool) -> bool {
