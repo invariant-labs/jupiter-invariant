@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anyhow::Error;
 use invariant_types::{SEED, STATE_SEED};
 
-use crate::{swap::InvariantSwapResult, JupiterInvariant};
+use crate::{JupiterInvariant, swap::InvariantSwapResult};
 
 #[derive(Clone)]
 pub struct InvariantSwapParams<'a> {

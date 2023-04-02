@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashMap, str::FromStr};
+
     use anchor_lang::prelude::Pubkey;
+    use jupiter_core::amm::{Amm, KeyedAccount, QuoteParams, SwapParams};
     use solana_client::rpc_client::RpcClient;
     use solana_sdk::pubkey;
-
-    use jupiter_core::amm::{Amm, KeyedAccount, QuoteParams, SwapParams};
-    use std::{collections::HashMap, str::FromStr};
 
     use crate::JupiterInvariant;
 

@@ -7,8 +7,8 @@ use invariant_types::{
         compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price,
         is_enough_amount_to_push_price, SwapResult,
     },
-    structs::TICK_CROSSES_PER_IX,
     MAX_VIRTUAL_CROSS,
+    structs::TICK_CROSSES_PER_IX,
 };
 use jupiter_core::amm::QuoteParams;
 

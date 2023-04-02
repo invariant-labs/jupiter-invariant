@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+use anchor_lang::{AnchorDeserialize, prelude::Pubkey};
 use anchor_lang::Key;
-use anchor_lang::{prelude::Pubkey, AnchorDeserialize};
 use invariant_types::{
-    structs::{TICKMAP_SIZE, TICK_CROSSES_PER_IX, TICK_LIMIT},
-    ANCHOR_DISCRIMINATOR_SIZE, TICK_SEED,
+    ANCHOR_DISCRIMINATOR_SIZE,
+    structs::{TICK_CROSSES_PER_IX, TICK_LIMIT, TICKMAP_SIZE}, TICK_SEED,
 };
 use solana_client::rpc_client::RpcClient;
 
