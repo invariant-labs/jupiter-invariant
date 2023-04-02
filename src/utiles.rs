@@ -16,10 +16,6 @@ enum PriceDirection {
 }
 
 impl JupiterInvariant {
-    fn extract_from_anchor_account(data: &[u8]) -> &[u8] {
-        data.split_at(ANCHOR_DISCRIMINATOR_SIZE).1
-    }
-
     pub fn deserialize<T>(data: &[u8]) -> anyhow::Result<T>
     where
         T: AnchorDeserialize,
@@ -42,6 +38,47 @@ impl JupiterInvariant {
                 }
                 m
             })
+    }
+
+    pub fn tick_indexes_to_addresses(&self, indexes: &[i32]) -> Vec<Pubkey> {
+        let pubkeys: Vec<Pubkey> = indexes
+            .iter()
+            .map(|i| self.tick_index_to_address(*i))
+            .collect();
+        pubkeys
+    }
+
+    pub fn tick_index_to_address(&self, i: i32) -> Pubkey {
+        let (pubkey, _) = Pubkey::find_program_address(
+            &[
+                TICK_SEED.as_bytes(),
+                self.market_key.key().as_ref(),
+                &i.to_le_bytes(),
+            ],
+            &self.program_id,
+        );
+        pubkey
+    }
+
+    pub fn get_ticks_addresses_around(&self) -> Vec<Pubkey> {
+        let above_indexes = self.find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
+        let below_indexes =
+            self.find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN);
+        let all_indexes = [below_indexes, above_indexes].concat();
+
+        self.tick_indexes_to_addresses(&all_indexes)
+    }
+
+    pub fn ticks_accounts_outdated(&self) -> bool {
+        let ticks_addresses = self.get_ticks_addresses_around();
+
+        ticks_addresses
+            .iter()
+            .any(|address| !self.ticks.contains_key(address))
+    }
+
+    fn extract_from_anchor_account(data: &[u8]) -> &[u8] {
+        data.split_at(ANCHOR_DISCRIMINATOR_SIZE).1
     }
 
     fn find_closest_tick_indexes(
@@ -87,34 +124,5 @@ impl JupiterInvariant {
             .iter()
             .map(|i: &i32| (i - TICK_LIMIT) * tick_spacing)
             .collect()
-    }
-
-    pub fn tick_indexes_to_addresses(&self, indexes: &[i32]) -> Vec<Pubkey> {
-        let pubkeys: Vec<Pubkey> = indexes
-            .iter()
-            .map(|i| self.tick_index_to_address(*i))
-            .collect();
-        pubkeys
-    }
-
-    pub fn tick_index_to_address(&self, i: i32) -> Pubkey {
-        let (pubkey, _) = Pubkey::find_program_address(
-            &[
-                TICK_SEED.as_bytes(),
-                self.market_key.key().as_ref(),
-                &i.to_le_bytes(),
-            ],
-            &self.program_id,
-        );
-        pubkey
-    }
-
-    pub fn get_ticks_addresses_around(&self) -> Vec<Pubkey> {
-        let above_indexes = self.find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::UP);
-        let below_indexes =
-            self.find_closest_tick_indexes(TICK_CROSSES_PER_IX, PriceDirection::DOWN);
-        let all_indexes = [below_indexes, above_indexes].concat();
-
-        self.tick_indexes_to_addresses(&all_indexes)
     }
 }

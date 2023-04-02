@@ -48,10 +48,14 @@ mod tests {
         let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
         jupiter_invariant.update(&accounts_map).unwrap();
 
+        let mut accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
         // update once again due to fetch accounts on a non-initialized tickmap.
-        let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-        let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
-        jupiter_invariant.update(&accounts_map).unwrap();
+        while accounts_outdated {
+            let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+            let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
+            jupiter_invariant.update(&accounts_map).unwrap();
+            accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
+        }
 
         let quote = QuoteParams {
             in_amount: 1 * 10u64.pow(6),
