@@ -41,17 +41,17 @@ In the case of high-frequency updates (few seconds or less), a single fetch of a
 
 If the frequency of account refresh is lower, it is recommended to check whether accounts are outdated after updating accounts. For this purpose, the JupiterInvariant::get_accounts_to_update() function has been added. Below is an example code snippet that updates accounts until the tick accounts are up-to-date:
 ```rust
-        // update market data
+    // update market data
+    let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+    let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
+    jupiter_invariant.update(&accounts_map).unwrap();
+
+    let mut accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
+    // update once again due to fetch accounts on a non-initialized tickmap.
+    while accounts_outdated {
         let accounts_to_update = jupiter_invariant.get_accounts_to_update();
         let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
         jupiter_invariant.update(&accounts_map).unwrap();
-
-        let mut accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
-        // update once again due to fetch accounts on a non-initialized tickmap.
-        while accounts_outdated {
-            let accounts_to_update = jupiter_invariant.get_accounts_to_update();
-            let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
-            jupiter_invariant.update(&accounts_map).unwrap();
-            accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
-        }
+        accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
+    }
 ```
