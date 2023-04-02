@@ -17,6 +17,8 @@ use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
 };
 
+pub type Ticks = HashMap<Pubkey, Tick>;
+
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
     pub program_id: Pubkey,
@@ -24,7 +26,7 @@ pub struct JupiterInvariant {
     pub label: String,
     pub pool: Pool,
     pub tickmap: Tickmap,
-    pub ticks: HashMap<Pubkey, Tick>,
+    pub ticks: Ticks,
 }
 
 impl JupiterInvariant {
@@ -78,7 +80,7 @@ impl Amm for JupiterInvariant {
                 let tick = Self::deserialize::<Tick>(data)?;
                 Ok((*key, tick))
             })
-            .collect::<Result<HashMap<Pubkey, Tick>>>()?;
+            .collect::<Result<Ticks>>()?;
 
         self.ticks = ticks;
         self.pool = pool;
