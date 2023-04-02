@@ -17,6 +17,8 @@ use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
 };
 
+pub type Ticks = HashMap<Pubkey, Tick>;
+
 #[derive(Clone, Default)]
 pub struct JupiterInvariant {
     pub program_id: Pubkey,
@@ -24,7 +26,7 @@ pub struct JupiterInvariant {
     pub label: String,
     pub pool: Pool,
     pub tickmap: Tickmap,
-    pub ticks: HashMap<Pubkey, Tick>,
+    pub ticks: Ticks,
 }
 
 impl JupiterInvariant {
@@ -78,7 +80,7 @@ impl Amm for JupiterInvariant {
                 let tick = Self::deserialize::<Tick>(data)?;
                 Ok((*key, tick))
             })
-            .collect::<Result<HashMap<Pubkey, Tick>>>()?;
+            .collect::<Result<Ticks>>()?;
 
         self.ticks = ticks;
         self.pool = pool;
@@ -127,33 +129,40 @@ impl Amm for JupiterInvariant {
             user_destination_token_account,
             user_source_token_account,
             user_transfer_authority,
+            quote_mint_to_referrer,
             ..
-        } = *swap_params;
+        } = swap_params;
+
+        let referral_fee: Option<Pubkey> = match quote_mint_to_referrer {
+            Some(referral) => referral.get(&source_mint).copied(),
+            _ => None,
+        };
 
         let quote_params = QuoteParams {
-            in_amount,
-            input_mint: source_mint,
-            output_mint: destination_mint,
+            in_amount: *in_amount,
+            input_mint: *source_mint,
+            output_mint: *destination_mint,
         };
         let invarinat_simulation_params = self.quote_to_invarinat_params(&quote_params)?;
-        let invariant_swap_result = self.simulate_invariant_swap(&invarinat_simulation_params);
+        let invariant_swap_result = self
+            .simulate_invariant_swap(&invarinat_simulation_params)
+            .map_err(|e| anyhow::anyhow!("Simulation error: {}", e))?;
 
-        if let Err(_) = invariant_swap_result {
-            return Err(anyhow::anyhow!("simulation error"));
+        if invariant_swap_result.ticks_accounts_outdated {
+            return Err(anyhow::anyhow!("ticks accounts outdated"));
         }
-        let invariant_swap_result = invariant_swap_result.unwrap();
         if invariant_swap_result.is_not_enoght_liquidity() {
             return Err(anyhow::anyhow!("insufficient liquidity"));
         }
 
         let invariant_swap_params = InvariantSwapParams {
             invariant_swap_result: &invariant_swap_result,
-            owner: user_transfer_authority,
-            source_mint,
-            destination_mint,
-            source_account: user_source_token_account,
-            destination_account: user_destination_token_account,
-            referral_fee: None,
+            owner: *user_transfer_authority,
+            source_mint: *source_mint,
+            destination_mint: *destination_mint,
+            source_account: *user_source_token_account,
+            destination_account: *user_destination_token_account,
+            referral_fee,
         };
 
         let (invariant_swap_accounts, x_to_y) =

@@ -34,6 +34,7 @@ pub struct InvariantSwapResult {
 
 impl InvariantSwapResult {
     pub fn is_not_enoght_liquidity(&self) -> bool {
+        // since "is_referal" is not specified in the quote parameters, we pessimistically assume that the referral is always used
         self.ticks_accounts_outdated || self.is_not_enoght_liquidity_referal(true)
     }
 
