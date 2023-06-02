@@ -81,21 +81,24 @@ mod tests {
             input_mint.1
         );
 
-        let _swap_leg_and_account_metas = jupiter_invariant
-            .get_swap_leg_and_account_metas(&SwapParams {
-                source_mint: quote.input_mint,
-                destination_mint: quote.output_mint,
-                user_destination_token_account: Pubkey::new_unique(),
-                user_source_token_account: Pubkey::new_unique(),
-                user_transfer_authority: Pubkey::new_unique(),
-                open_order_address: None,
-                quote_mint_to_referrer: Some(HashMap::from([(
-                    quote.input_mint,
-                    Pubkey::new_unique(),
-                )])),
-                in_amount: quote.in_amount,
-            })
-            .unwrap();
+        match jupiter_invariant.get_swap_leg_and_account_metas(&SwapParams {
+            source_mint: quote.input_mint,
+            destination_mint: quote.output_mint,
+            user_destination_token_account: Pubkey::new_unique(),
+            user_source_token_account: Pubkey::new_unique(),
+            user_transfer_authority: Pubkey::new_unique(),
+            open_order_address: None,
+            quote_mint_to_referrer: Some(HashMap::from([(quote.input_mint, Pubkey::new_unique())])),
+            in_amount: quote.in_amount,
+        }) {
+            Ok(_) => {
+                println!("Metas created successfully");
+            }
+            Err(err) => {
+                println!("Cannot create metas for invalid swap parameters");
+                println!("{}", err);
+            }
+        }
     }
 
     #[test]

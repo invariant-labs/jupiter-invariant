@@ -5,10 +5,10 @@ use invariant_types::{
     log::get_tick_at_sqrt_price,
     math::{
         compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price,
-        is_enough_amount_to_push_price, SwapResult,
+        is_enough_amount_to_push_price,
     },
-    MAX_VIRTUAL_CROSS,
     structs::TICK_CROSSES_PER_IX,
+    MAX_VIRTUAL_CROSS,
 };
 use jupiter_core::amm::QuoteParams;
 
@@ -93,7 +93,7 @@ impl JupiterInvariant {
     pub fn simulate_invariant_swap(
         &self,
         invariant_simulation_params: &InvariantSimulationParams,
-    ) -> Result<InvariantSwapResult, &str> {
+    ) -> Result<InvariantSwapResult, String> {
         let InvariantSimulationParams {
             in_amount,
             x_to_y,
@@ -134,14 +134,18 @@ impl JupiterInvariant {
                 }
             };
 
-            let result: SwapResult = compute_swap_step(
+            let result = compute_swap_step(
                 pool.sqrt_price,
                 swap_limit,
                 pool.liquidity,
                 remaining_amount,
                 by_amount_in,
                 pool.fee,
-            );
+            )
+            .map_err(|e| {
+                let (formatted, _, _) = e.get();
+                formatted
+            })?;
 
             remaining_amount -= result.amount_in + result.fee_amount;
             pool.sqrt_price = result.next_price_sqrt;
@@ -164,7 +168,11 @@ impl JupiterInvariant {
                     pool.fee,
                     by_amount_in,
                     x_to_y,
-                );
+                )
+                .map_err(|e| {
+                    let (formatted, _, _) = e.get();
+                    formatted
+                })?;
 
                 if initialized {
                     let tick_address = self.tick_index_to_address(tick_index);
@@ -180,7 +188,7 @@ impl JupiterInvariant {
                     // crossing tick
                     if !x_to_y || is_enough_amount_to_cross {
                         cross_tick(&mut tick, pool)
-                            .map_err(|_| "Internal Invariant Error: Cross tick")?;
+                            .map_err(|_| "Internal Invariant Error: Cross tick".to_string())?;
                         crossed_ticks.push(tick.index);
                     } else if !remaining_amount.is_zero() {
                         total_amount_in += remaining_amount;
@@ -202,7 +210,7 @@ impl JupiterInvariant {
                     .unwrap()
                     != 0
                 {
-                    return Err("Internal Invariant Error: Invalid tick");
+                    return Err("Internal Invariant Error: Invalid tick".to_string());
                 }
                 pool.current_tick_index =
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
