@@ -161,7 +161,6 @@ impl JupiterInvariant {
             // crossing tick
             if result.next_price_sqrt == swap_limit && limiting_tick.is_some() {
                 let (tick_index, initialized) = limiting_tick.unwrap();
-                // TODO: validate is_enough_amount_to_push_price
                 let is_enough_amount_to_cross = is_enough_amount_to_push_price(
                     remaining_amount,
                     result.next_price_sqrt,
@@ -169,7 +168,11 @@ impl JupiterInvariant {
                     pool.fee,
                     by_amount_in,
                     x_to_y,
-                );
+                )
+                .map_err(|e| {
+                    let (formatted, _, _) = e.get();
+                    formatted
+                })?;
 
                 if initialized {
                     let tick_address = self.tick_index_to_address(tick_index);
