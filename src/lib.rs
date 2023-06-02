@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use anchor_lang::prelude::*;
 use anyhow::Result;
-use invariant_types::ID;
 use invariant_types::structs::{Pool, Tick, Tickmap};
+use invariant_types::ID;
 use jupiter::jupiter_override::{Swap, SwapLeg};
 use jupiter_core::amm::{
     Amm, KeyedAccount, Quote, QuoteParams, SwapLegAndAccountMetas, SwapParams,
@@ -111,10 +111,13 @@ impl Amm for JupiterInvariant {
                 };
                 Ok(quote)
             }
-            Err(_err) => Ok(Quote {
-                not_enough_liquidity: true,
-                ..Quote::default()
-            }),
+            Err(err) => {
+                println!("{}", err);
+                return Ok(Quote {
+                    not_enough_liquidity: true,
+                    ..Quote::default()
+                });
+            }
         }
     }
 
