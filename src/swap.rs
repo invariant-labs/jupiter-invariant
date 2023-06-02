@@ -145,13 +145,7 @@ impl JupiterInvariant {
             .map_err(|e| {
                 let (formatted, _, _) = e.get();
                 formatted
-            });
-
-            if result.is_err() {
-                let err = result.unwrap_err();
-                return Err(err);
-            }
-            let result = result.unwrap();
+            })?;
 
             remaining_amount -= result.amount_in + result.fee_amount;
             pool.sqrt_price = result.next_price_sqrt;
