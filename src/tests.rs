@@ -101,6 +101,7 @@ mod tests {
         }
     }
 
+    #[ignore = "devnet only test"]
     #[test]
     fn test_fetch_all_pool() {
         let rpc = RpcClient::new("https://api.mainnet-beta.solana.com");
