@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
-use anchor_lang::{AnchorDeserialize, prelude::Pubkey};
 use anchor_lang::Key;
+use anchor_lang::{prelude::Pubkey, AnchorDeserialize};
+use invariant_types::decimals::{BigOps, Decimal, Price, U256};
 use invariant_types::{
-    ANCHOR_DISCRIMINATOR_SIZE,
-    structs::{TICK_CROSSES_PER_IX, TICK_LIMIT, TICKMAP_SIZE}, TICK_SEED,
+    structs::{TICKMAP_SIZE, TICK_CROSSES_PER_IX, TICK_LIMIT},
+    ANCHOR_DISCRIMINATOR_SIZE, TICK_SEED,
 };
+use rust_decimal::prelude::FromPrimitive;
 use solana_client::rpc_client::RpcClient;
 
 use crate::JupiterInvariant;
@@ -16,6 +18,8 @@ enum PriceDirection {
 }
 
 impl JupiterInvariant {
+    pub const PRICE_IMPACT_ACCURACY: u128 = 1_000_000_000_000u128;
+
     pub fn deserialize<T>(data: &[u8]) -> anyhow::Result<T>
     where
         T: AnchorDeserialize,
@@ -124,5 +128,28 @@ impl JupiterInvariant {
             .iter()
             .map(|i: &i32| (i - TICK_LIMIT) * tick_spacing)
             .collect()
+    }
+
+    pub fn calculate_price_impact(
+        starting_sqrt_price: Price,
+        ending_sqrt_price: Price,
+    ) -> Option<rust_decimal::Decimal> {
+        // TODO: Refactor
+        // TODO: Add checked math
+        let accuracy = U256::from(Self::PRICE_IMPACT_ACCURACY);
+        let starting_price = U256::from(starting_sqrt_price.big_mul(starting_sqrt_price).get());
+        let ending_price = U256::from(ending_sqrt_price.big_mul(ending_sqrt_price).get());
+
+        let price_quote = match starting_price > ending_price {
+            true => accuracy * ending_price / starting_price,
+            false => accuracy * starting_price / ending_price,
+        };
+
+        let price_impact_decimal = accuracy - price_quote;
+
+        let price_impact_pct = f64::from_u128(price_impact_decimal.as_u128()).unwrap()
+            / f64::from_u128(accuracy.as_u128()).unwrap();
+
+        rust_decimal::Decimal::from_f64(price_impact_pct)
     }
 }
