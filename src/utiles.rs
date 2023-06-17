@@ -263,6 +263,14 @@ mod tests {
                 // expected     1
                 assert_eq!(result, rust_decimal::Decimal::from_f64(1.).unwrap());
             }
+            // min_sqrt_price -> almost_max_sqrt_price
+            {
+                let result =
+                    JupiterInvariant::calculate_price_impact(min_sqrt_price, almost_min_sqrt_price)
+                        .unwrap();
+
+                assert_eq!(result, rust_decimal::Decimal::from_f64(0.).unwrap());
+            }
         }
     }
 }
