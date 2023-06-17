@@ -271,6 +271,17 @@ mod tests {
 
                 assert_eq!(result, rust_decimal::Decimal::from_f64(0.).unwrap());
             }
+            // max_sqrt_price -> almost_max_sqrt_price
+            {
+                let result =
+                    JupiterInvariant::calculate_price_impact(max_sqrt_price, almost_max_sqrt_price)
+                        .unwrap();
+
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.000000000001).unwrap()
+                );
+            }
         }
     }
 }
