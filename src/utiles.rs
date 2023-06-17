@@ -198,6 +198,51 @@ mod tests {
                     rust_decimal::Decimal::from_f64(0.000007272675).unwrap()
                 );
             }
+            // 1 -> 0.9999
+            {
+                let a = Price::from_integer(1);
+                let b = Price::new(999949998749937496093476);
+
+                let result: rust_decimal::Decimal =
+                    JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.0001
+                // expected     0.000100000001
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.000100000001).unwrap()
+                );
+            }
+            // 0.2 -> 1.3
+            {
+                let a = Price::new(447213595499957939281834);
+                let b = Price::new(1140175425099137979136049);
+
+                let result: rust_decimal::Decimal =
+                    JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.8461538461538...
+                // expected     0.846153846154
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.846153846154).unwrap()
+                );
+            }
+            // 0.000197 -> 0.000246
+            {
+                let a = Price::new(15684387141358121934184);
+                let b = Price::new(14035668847618199630519);
+
+                let result: rust_decimal::Decimal =
+                    JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.199186991869...
+                // expected     0.19918699187
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.19918699187).unwrap()
+                );
+            }
         }
     }
 }
