@@ -153,3 +153,51 @@ impl JupiterInvariant {
         rust_decimal::Decimal::from_f64(price_impact_pct)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use invariant_types::decimals::{Decimal, Factories, Price};
+    use rust_decimal::prelude::FromPrimitive;
+
+    use crate::JupiterInvariant;
+
+    #[test]
+    fn test_calculate_price_impact() {
+        {
+            // 1 -> 6
+            {
+                let a = Price::from_integer(1);
+                let b = Price::new(2449489742783178098197284);
+
+                let result = JupiterInvariant::calculate_price_impact(a, b).unwrap();
+                let reversed_result = JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.8(3)
+                // expected     0.833333333334
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.833333333334).unwrap()
+                );
+                assert_eq!(
+                    reversed_result,
+                    rust_decimal::Decimal::from_f64(0.833333333334).unwrap()
+                );
+            }
+            // 55000 -> 55000.4
+            {
+                let a = Price::new(234520787991171477728281505u128);
+                let b = Price::new(234521640792486355143954683u128);
+
+                let result: rust_decimal::Decimal =
+                    JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.0000072726743...
+                // expected     0.000007272675
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.000007272675).unwrap()
+                );
+            }
+        }
+    }
+}
