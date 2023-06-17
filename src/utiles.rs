@@ -244,5 +244,25 @@ mod tests {
                 );
             }
         }
+        // EDGE CASES
+        {
+            let max_sqrt_price = Price::new(65535383934512647000000000000);
+            let almost_max_sqrt_price = max_sqrt_price - Price::new(1);
+            let min_sqrt_price = Price::new(15258932000000000000);
+            let almost_min_sqrt_price = min_sqrt_price + Price::new(1);
+
+            // min_price -> max_price
+            // 4294886547.443978352291489402946609
+            // 0.000000000232
+            {
+                let result =
+                    JupiterInvariant::calculate_price_impact(min_sqrt_price, max_sqrt_price)
+                        .unwrap();
+
+                // real:        0.99999999999999999994...
+                // expected     1
+                assert_eq!(result, rust_decimal::Decimal::from_f64(1.).unwrap());
+            }
+        }
     }
 }
