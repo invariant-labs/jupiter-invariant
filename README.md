@@ -12,8 +12,10 @@ The result is a quote for selling 1 USDC on the USDC/USDT Invariant market. Here
 ```
 insufficient liquidity: false
 input amount: 1.000000 USDC
-output amount: 1.000056 USDT
+output amount: 1.000450 USDT
 fee amount: 0.000010 USDC
+price impact: 0.001542 %
+Metas created successfully
 ```
 
 If you want to reverse the swap direction, use this command:
@@ -31,7 +33,7 @@ You can combine both parameters:
 cargo test test_jupiter_invariant -- --nocapture "dir=reversed" "rpc=https://your-rpc.com/..."
 ```
 
-## Accounts Referesing
+## Accounts Refreshing
 
 It's crucial to take into account how frequently accounts are updated when a library client relies on retrieving every required account at once during the quote action cycle. Below are the recommendations for updating accounts in the quote cycle.
 
