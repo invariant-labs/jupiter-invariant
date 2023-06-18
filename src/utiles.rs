@@ -133,24 +133,35 @@ impl JupiterInvariant {
     pub fn calculate_price_impact(
         starting_sqrt_price: Price,
         ending_sqrt_price: Price,
-    ) -> Option<rust_decimal::Decimal> {
+    ) -> Result<rust_decimal::Decimal, String> {
         // TODO: Refactor
-        // TODO: Add checked math
         let accuracy = U256::from(Self::PRICE_IMPACT_ACCURACY);
         let starting_price = U256::from(starting_sqrt_price.big_mul(starting_sqrt_price).get());
         let ending_price = U256::from(ending_sqrt_price.big_mul(ending_sqrt_price).get());
 
         let price_quote = match starting_price > ending_price {
-            true => accuracy * ending_price / starting_price,
-            false => accuracy * starting_price / ending_price,
+            true => accuracy
+                .checked_mul(ending_price)
+                .ok_or_else(|| "mul overflow")?
+                .checked_div(starting_price)
+                .ok_or_else(|| "div overflow")?,
+            false => accuracy
+                .checked_mul(starting_price)
+                .ok_or_else(|| "mul overflow")?
+                .checked_div(ending_price)
+                .ok_or_else(|| "div overflow")?,
         };
 
-        let price_impact_decimal = accuracy - price_quote;
+        let price_impact_decimal = accuracy
+            .checked_sub(price_quote)
+            .ok_or_else(|| "sub overflow")?;
 
-        let price_impact_pct = f64::from_u128(price_impact_decimal.as_u128()).unwrap()
-            / f64::from_u128(accuracy.as_u128()).unwrap();
+        let price_impact_pct = f64::from_u128(price_impact_decimal.as_u128())
+            .ok_or_else(|| "converting price impact to f64")?
+            / f64::from_u128(accuracy.as_u128()).ok_or_else(|| "converting accuracy to f64")?;
 
-        rust_decimal::Decimal::from_f64(price_impact_pct)
+        Ok(rust_decimal::Decimal::from_f64(price_impact_pct)
+            .ok_or_else(|| "converting to rust_decimal")?)
     }
 }
 
