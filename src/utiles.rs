@@ -133,32 +133,27 @@ impl JupiterInvariant {
     pub fn calculate_price_impact(
         starting_sqrt_price: Price,
         ending_sqrt_price: Price,
-    ) -> Result<rust_decimal::Decimal, String> {
-        // TODO: Refactor
+    ) -> Result<rust_decimal::Decimal, &'static str> {
         let accuracy = U256::from(Self::PRICE_IMPACT_ACCURACY);
         let starting_price = U256::from(starting_sqrt_price.big_mul(starting_sqrt_price).get());
         let ending_price = U256::from(ending_sqrt_price.big_mul(ending_sqrt_price).get());
 
-        let price_quote = match starting_price > ending_price {
-            true => accuracy
+        let price_quote = if starting_price > ending_price {
+            accuracy
                 .checked_mul(ending_price)
-                .ok_or_else(|| "mul overflow")?
-                .checked_div(starting_price)
-                .ok_or_else(|| "div overflow")?,
-            false => accuracy
+                .and_then(|result| result.checked_div(starting_price))
+                .ok_or("mul/div overflow")?
+        } else {
+            accuracy
                 .checked_mul(starting_price)
-                .ok_or_else(|| "mul overflow")?
-                .checked_div(ending_price)
-                .ok_or_else(|| "div overflow")?,
+                .and_then(|result| result.checked_div(ending_price))
+                .ok_or("mul/div overflow")?
         };
-
-        let price_impact_decimal = accuracy
-            .checked_sub(price_quote)
-            .ok_or_else(|| "sub overflow")?;
-
+        let price_impact_decimal = accuracy.checked_sub(price_quote).ok_or("sub overflow")?;
         let price_impact_pct = f64::from_u128(price_impact_decimal.as_u128())
             .ok_or_else(|| "converting price impact to f64")?
-            / f64::from_u128(accuracy.as_u128()).ok_or_else(|| "converting accuracy to f64")?;
+            / f64::from_u128(Self::PRICE_IMPACT_ACCURACY)
+                .ok_or_else(|| "converting accuracy to f64")?;
 
         Ok(rust_decimal::Decimal::from_f64(price_impact_pct)
             .ok_or_else(|| "converting to rust_decimal")?)
