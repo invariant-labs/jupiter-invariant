@@ -100,13 +100,22 @@ impl Amm for JupiterInvariant {
                     in_amount,
                     out_amount,
                     fee_amount,
+                    starting_sqrt_price,
+                    ending_sqrt_price,
                     ..
                 } = result;
+                let price_impact_pct =
+                    match Self::calculate_price_impact(starting_sqrt_price, ending_sqrt_price) {
+                        Ok(price_impact) => price_impact,
+                        Err(_) => rust_decimal::Decimal::default(),
+                    };
+
                 let quote = Quote {
                     in_amount,
                     out_amount,
                     fee_amount,
                     not_enough_liquidity,
+                    price_impact_pct,
                     ..Quote::default()
                 };
                 Ok(quote)
