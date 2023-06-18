@@ -5,7 +5,7 @@ use anchor_lang::{prelude::Pubkey, AnchorDeserialize};
 use invariant_types::decimals::{BigOps, Decimal, Price, U256};
 use invariant_types::{
     structs::{TICKMAP_SIZE, TICK_CROSSES_PER_IX, TICK_LIMIT},
-    ANCHOR_DISCRIMINATOR_SIZE, TICK_SEED,
+    ANCHOR_DISCRIMINATOR_SIZE, MAX_SQRT_PRICE, TICK_SEED,
 };
 use rust_decimal::prelude::FromPrimitive;
 use solana_client::rpc_client::RpcClient;
@@ -134,8 +134,8 @@ impl JupiterInvariant {
         starting_sqrt_price: Price,
         ending_sqrt_price: Price,
     ) -> Result<rust_decimal::Decimal, &'static str> {
-        if starting_sqrt_price > Price::new(65535383934512647000000000000)
-            || ending_sqrt_price > Price::new(65535383934512647000000000000)
+        if starting_sqrt_price > Price::new(MAX_SQRT_PRICE)
+            || ending_sqrt_price > Price::new(MAX_SQRT_PRICE)
         {
             return Err("Price out of range");
         }
