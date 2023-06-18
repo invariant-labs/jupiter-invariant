@@ -134,6 +134,12 @@ impl JupiterInvariant {
         starting_sqrt_price: Price,
         ending_sqrt_price: Price,
     ) -> Result<rust_decimal::Decimal, &'static str> {
+        if starting_sqrt_price > Price::new(65535383934512647000000000000)
+            || ending_sqrt_price > Price::new(65535383934512647000000000000)
+        {
+            return Err("Price out of range");
+        }
+
         let accuracy = U256::from(Self::PRICE_IMPACT_ACCURACY);
         let starting_price = U256::from(starting_sqrt_price.big_mul(starting_sqrt_price).get());
         let ending_price = U256::from(ending_sqrt_price.big_mul(ending_sqrt_price).get());
@@ -286,6 +292,14 @@ mod tests {
                     rust_decimal::Decimal::from_f64(0.000000000001).unwrap()
                 );
             }
+        }
+
+        // OVERFLOW (price out of range)
+        {
+            let a = Price::max_instance();
+            let b = Price::new(100000);
+            let result = JupiterInvariant::calculate_price_impact(a, b);
+            assert_eq!(result, Err("Price out of range"));
         }
     }
 }
