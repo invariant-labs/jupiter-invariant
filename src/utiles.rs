@@ -138,17 +138,15 @@ impl JupiterInvariant {
         let starting_price = U256::from(starting_sqrt_price.big_mul(starting_sqrt_price).get());
         let ending_price = U256::from(ending_sqrt_price.big_mul(ending_sqrt_price).get());
 
-        let price_quote = if starting_price > ending_price {
-            accuracy
-                .checked_mul(ending_price)
-                .and_then(|result| result.checked_div(starting_price))
-                .ok_or("mul/div overflow")?
-        } else {
-            accuracy
-                .checked_mul(starting_price)
-                .and_then(|result| result.checked_div(ending_price))
-                .ok_or("mul/div overflow")?
+        let (numerator, denominator) = match starting_price > ending_price {
+            true => (ending_price, starting_price),
+            false => (starting_price, ending_price),
         };
+        let price_quote = accuracy
+            .checked_mul(numerator)
+            .and_then(|result| result.checked_div(denominator))
+            .ok_or("mul/div overflow")?;
+
         let price_impact_decimal = accuracy.checked_sub(price_quote).ok_or("sub overflow")?;
         let price_impact_pct = f64::from_u128(price_impact_decimal.as_u128())
             .ok_or_else(|| "converting price impact to f64")?
