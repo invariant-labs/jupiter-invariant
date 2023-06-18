@@ -90,23 +90,30 @@ impl Amm for JupiterInvariant {
     }
 
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
-        let invariant_simulation_params = self.quote_to_invarinat_params(quote_params)?;
+        let invariant_simulation_params = self.quote_to_invariant_params(quote_params)?;
         let simulation_result = self.simulate_invariant_swap(&invariant_simulation_params);
 
         match simulation_result {
             Ok(result) => {
-                let not_enough_liquidity = result.is_not_enoght_liquidity();
+                let not_enough_liquidity = result.is_not_enough_liquidity();
                 let InvariantSwapResult {
                     in_amount,
                     out_amount,
                     fee_amount,
+                    starting_sqrt_price,
+                    ending_sqrt_price,
                     ..
                 } = result;
+                let price_impact_pct =
+                    Self::calculate_price_impact(starting_sqrt_price, ending_sqrt_price)
+                        .unwrap_or_else(|_| rust_decimal::Decimal::default());
+
                 let quote = Quote {
                     in_amount,
                     out_amount,
                     fee_amount,
                     not_enough_liquidity,
+                    price_impact_pct,
                     ..Quote::default()
                 };
                 Ok(quote)
@@ -146,15 +153,15 @@ impl Amm for JupiterInvariant {
             input_mint: *source_mint,
             output_mint: *destination_mint,
         };
-        let invarinat_simulation_params = self.quote_to_invarinat_params(&quote_params)?;
+        let invariant_simulation_params = self.quote_to_invariant_params(&quote_params)?;
         let invariant_swap_result = self
-            .simulate_invariant_swap(&invarinat_simulation_params)
+            .simulate_invariant_swap(&invariant_simulation_params)
             .map_err(|e| anyhow::anyhow!("Simulation error: {}", e))?;
 
         if invariant_swap_result.ticks_accounts_outdated {
             return Err(anyhow::anyhow!("ticks accounts outdated"));
         }
-        if invariant_swap_result.is_not_enoght_liquidity() {
+        if invariant_swap_result.is_not_enough_liquidity() {
             return Err(anyhow::anyhow!("insufficient liquidity"));
         }
 

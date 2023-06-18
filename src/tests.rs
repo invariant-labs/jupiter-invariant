@@ -4,6 +4,7 @@ mod tests {
 
     use anchor_lang::prelude::Pubkey;
     use jupiter_core::amm::{Amm, KeyedAccount, QuoteParams, SwapParams};
+    use rust_decimal::prelude::ToPrimitive;
     use solana_client::rpc_client::RpcClient;
     use solana_sdk::pubkey;
 
@@ -79,6 +80,10 @@ mod tests {
             "fee amount: {:.6} {}",
             result.fee_amount as f64 / 10u64.pow(6) as f64,
             input_mint.1
+        );
+        println!(
+            "price impact: {:.6} %",
+            result.price_impact_pct.to_f64().unwrap() * 100.0
         );
 
         match jupiter_invariant.get_swap_leg_and_account_metas(&SwapParams {

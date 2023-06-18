@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
-use anchor_lang::{AnchorDeserialize, prelude::Pubkey};
 use anchor_lang::Key;
+use anchor_lang::{prelude::Pubkey, AnchorDeserialize};
+use invariant_types::decimals::{BigOps, Decimal, Price, U256};
 use invariant_types::{
-    ANCHOR_DISCRIMINATOR_SIZE,
-    structs::{TICK_CROSSES_PER_IX, TICK_LIMIT, TICKMAP_SIZE}, TICK_SEED,
+    structs::{TICKMAP_SIZE, TICK_CROSSES_PER_IX, TICK_LIMIT},
+    ANCHOR_DISCRIMINATOR_SIZE, MAX_SQRT_PRICE, TICK_SEED,
 };
+use rust_decimal::prelude::FromPrimitive;
 use solana_client::rpc_client::RpcClient;
 
 use crate::JupiterInvariant;
@@ -16,6 +18,8 @@ enum PriceDirection {
 }
 
 impl JupiterInvariant {
+    pub const PRICE_IMPACT_ACCURACY: u128 = 1_000_000_000_000u128;
+
     pub fn deserialize<T>(data: &[u8]) -> anyhow::Result<T>
     where
         T: AnchorDeserialize,
@@ -124,5 +128,178 @@ impl JupiterInvariant {
             .iter()
             .map(|i: &i32| (i - TICK_LIMIT) * tick_spacing)
             .collect()
+    }
+
+    pub fn calculate_price_impact(
+        starting_sqrt_price: Price,
+        ending_sqrt_price: Price,
+    ) -> Result<rust_decimal::Decimal, &'static str> {
+        if starting_sqrt_price > Price::new(MAX_SQRT_PRICE)
+            || ending_sqrt_price > Price::new(MAX_SQRT_PRICE)
+        {
+            return Err("Price out of range");
+        }
+
+        let accuracy = U256::from(Self::PRICE_IMPACT_ACCURACY);
+        let starting_price = U256::from(starting_sqrt_price.big_mul(starting_sqrt_price).get());
+        let ending_price = U256::from(ending_sqrt_price.big_mul(ending_sqrt_price).get());
+
+        let (numerator, denominator) = match starting_price > ending_price {
+            true => (ending_price, starting_price),
+            false => (starting_price, ending_price),
+        };
+        let price_quote = accuracy
+            .checked_mul(numerator)
+            .and_then(|result| result.checked_div(denominator))
+            .ok_or("mul/div overflow")?;
+
+        let price_impact_decimal = accuracy.checked_sub(price_quote).ok_or("sub overflow")?;
+        let price_impact_pct = f64::from_u128(price_impact_decimal.as_u128())
+            .ok_or_else(|| "converting price impact to f64")?
+            / f64::from_u128(Self::PRICE_IMPACT_ACCURACY)
+                .ok_or_else(|| "converting accuracy to f64")?;
+
+        Ok(rust_decimal::Decimal::from_f64(price_impact_pct)
+            .ok_or_else(|| "converting to rust_decimal")?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use invariant_types::decimals::{Decimal, Factories, Price};
+    use rust_decimal::prelude::FromPrimitive;
+
+    use crate::JupiterInvariant;
+
+    #[test]
+    fn test_calculate_price_impact() {
+        {
+            // 1 -> 6
+            {
+                let a = Price::from_integer(1);
+                let b = Price::new(2449489742783178098197284);
+
+                let result = JupiterInvariant::calculate_price_impact(a, b).unwrap();
+                let reversed_result = JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.8(3)
+                // expected     0.833333333334
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.833333333334).unwrap()
+                );
+                assert_eq!(
+                    reversed_result,
+                    rust_decimal::Decimal::from_f64(0.833333333334).unwrap()
+                );
+            }
+            // 55000 -> 55000.4
+            {
+                let a = Price::new(234520787991171477728281505u128);
+                let b = Price::new(234521640792486355143954683u128);
+
+                let result: rust_decimal::Decimal =
+                    JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.0000072726743...
+                // expected     0.000007272675
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.000007272675).unwrap()
+                );
+            }
+            // 1 -> 0.9999
+            {
+                let a = Price::from_integer(1);
+                let b = Price::new(999949998749937496093476);
+
+                let result: rust_decimal::Decimal =
+                    JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.0001
+                // expected     0.000100000001
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.000100000001).unwrap()
+                );
+            }
+            // 0.2 -> 1.3
+            {
+                let a = Price::new(447213595499957939281834);
+                let b = Price::new(1140175425099137979136049);
+
+                let result: rust_decimal::Decimal =
+                    JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.8461538461538...
+                // expected     0.846153846154
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.846153846154).unwrap()
+                );
+            }
+            // 0.000197 -> 0.000246
+            {
+                let a = Price::new(15684387141358121934184);
+                let b = Price::new(14035668847618199630519);
+
+                let result: rust_decimal::Decimal =
+                    JupiterInvariant::calculate_price_impact(a, b).unwrap();
+
+                // real:        0.199186991869...
+                // expected     0.19918699187
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.19918699187).unwrap()
+                );
+            }
+        }
+        // EDGE CASES
+        {
+            let max_sqrt_price = Price::new(65535383934512647000000000000);
+            let almost_max_sqrt_price = max_sqrt_price - Price::new(1);
+            let min_sqrt_price = Price::new(15258932000000000000);
+            let almost_min_sqrt_price = min_sqrt_price + Price::new(1);
+
+            // min_price -> max_price
+            // 4294886547.443978352291489402946609
+            // 0.000000000232
+            {
+                let result =
+                    JupiterInvariant::calculate_price_impact(min_sqrt_price, max_sqrt_price)
+                        .unwrap();
+
+                // real:        0.99999999999999999994...
+                // expected     1
+                assert_eq!(result, rust_decimal::Decimal::from_f64(1.).unwrap());
+            }
+            // min_sqrt_price -> almost_max_sqrt_price
+            {
+                let result =
+                    JupiterInvariant::calculate_price_impact(min_sqrt_price, almost_min_sqrt_price)
+                        .unwrap();
+
+                assert_eq!(result, rust_decimal::Decimal::from_f64(0.).unwrap());
+            }
+            // max_sqrt_price -> almost_max_sqrt_price
+            {
+                let result =
+                    JupiterInvariant::calculate_price_impact(max_sqrt_price, almost_max_sqrt_price)
+                        .unwrap();
+
+                assert_eq!(
+                    result,
+                    rust_decimal::Decimal::from_f64(0.000000000001).unwrap()
+                );
+            }
+        }
+
+        // OVERFLOW (price out of range)
+        {
+            let a = Price::max_instance();
+            let b = Price::new(100000);
+            let result = JupiterInvariant::calculate_price_impact(a, b);
+            assert_eq!(result, Err("Price out of range"));
+        }
     }
 }
