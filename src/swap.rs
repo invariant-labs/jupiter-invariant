@@ -35,31 +35,31 @@ pub struct InvariantSwapResult {
 }
 
 impl InvariantSwapResult {
-    pub fn is_not_enoght_liquidity(&self) -> bool {
-        // since "is_referal" is not specified in the quote parameters, we pessimistically assume that the referral is always used
-        self.ticks_accounts_outdated || self.is_not_enoght_liquidity_referal(true)
+    pub fn is_not_enough_liquidity(&self) -> bool {
+        // since "is_referral" is not specified in the quote parameters, we pessimistically assume that the referral is always used
+        self.ticks_accounts_outdated || self.is_not_enough_liquidity_referral(true)
     }
 
-    fn is_exceeded_cu_referal(&self, is_referal: bool) -> bool {
+    fn is_exceeded_cu_referral(&self, is_referral: bool) -> bool {
         let crossed_amount = self.crossed_ticks.len();
         let mut max_cross = TICK_CROSSES_PER_IX;
-        if is_referal {
+        if is_referral {
             max_cross -= 1;
         }
-        let is_excceded_by_account_size = crossed_amount > max_cross;
-        let is_excceded_by_compute_units =
+        let is_exceeded_by_account_size = crossed_amount > max_cross;
+        let is_exceeded_by_compute_units =
             crossed_amount == max_cross && self.virtual_cross_counter > MAX_VIRTUAL_CROSS;
 
-        is_excceded_by_account_size || is_excceded_by_compute_units
+        is_exceeded_by_account_size || is_exceeded_by_compute_units
     }
 
-    fn is_not_enoght_liquidity_referal(&self, is_referal: bool) -> bool {
-        self.is_exceeded_cu_referal(is_referal) || self.global_insufficient_liquidity
+    fn is_not_enough_liquidity_referral(&self, is_referral: bool) -> bool {
+        self.is_exceeded_cu_referral(is_referral) || self.global_insufficient_liquidity
     }
 }
 
 impl JupiterInvariant {
-    pub fn quote_to_invarinat_params(
+    pub fn quote_to_invariant_params(
         &self,
         quote_params: &QuoteParams,
     ) -> anyhow::Result<InvariantSimulationParams> {
