@@ -26,6 +26,8 @@ pub struct InvariantSwapResult {
     pub in_amount: u64,
     pub out_amount: u64,
     pub fee_amount: u64,
+    pub starting_sqrt_price: Price,
+    pub ending_sqrt_price: Price,
     pub crossed_ticks: Vec<i32>,
     pub virtual_cross_counter: u16,
     pub global_insufficient_liquidity: bool,
@@ -101,10 +103,11 @@ impl JupiterInvariant {
             by_amount_in,
         } = *invariant_simulation_params;
 
-        let (mut pool, ticks, tickmap) = (
+        let (mut pool, ticks, tickmap, starting_sqrt_price) = (
             &mut self.pool.clone(),
             &self.ticks.clone(),
             &self.tickmap.clone(),
+            self.pool.sqrt_price,
         );
         let (mut remaining_amount, mut total_amount_in, mut total_amount_out, mut total_fee_amount) = (
             TokenAmount::new(in_amount),
@@ -221,6 +224,8 @@ impl JupiterInvariant {
             in_amount: total_amount_in.0,
             out_amount: total_amount_out.0,
             fee_amount: total_fee_amount.0,
+            starting_sqrt_price,
+            ending_sqrt_price: pool.sqrt_price,
             crossed_ticks,
             virtual_cross_counter,
             global_insufficient_liquidity,
