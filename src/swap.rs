@@ -198,7 +198,17 @@ impl JupiterInvariant {
                         remaining_amount = TokenAmount(0);
                     }
                 } else {
-                    virtual_cross_counter += 1;
+                    virtual_cross_counter = match virtual_cross_counter.checked_add(1) {
+                        Some(v) => v,
+                        None => {
+                            break;
+                        }
+                    };
+                    if ticks.len() as u16 + virtual_cross_counter
+                        > MAX_VIRTUAL_CROSS + TICK_CROSSES_PER_IX as u16
+                    {
+                        break;
+                    }
                 }
 
                 pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
@@ -217,7 +227,17 @@ impl JupiterInvariant {
                 }
                 pool.current_tick_index =
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
-                virtual_cross_counter += 1;
+                virtual_cross_counter = match virtual_cross_counter.checked_add(1) {
+                    Some(v) => v,
+                    None => {
+                        break;
+                    }
+                };
+                if ticks.len() as u16 + virtual_cross_counter
+                    > MAX_VIRTUAL_CROSS + TICK_CROSSES_PER_IX as u16
+                {
+                    break;
+                }
             }
         }
         Ok(InvariantSwapResult {
