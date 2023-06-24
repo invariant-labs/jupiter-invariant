@@ -160,16 +160,11 @@ impl JupiterInvariant {
                 global_insufficient_liquidity = true;
                 break;
             }
-
-            let global_edge_tick = match x_to_y {
-                true => get_min_tick(pool.tick_spacing),
-                false => get_max_tick(pool.tick_spacing),
+            let reached_tick_limit = match x_to_y {
+                true => pool.current_tick_index <= get_min_tick(pool.tick_spacing),
+                false => pool.current_tick_index >= get_max_tick(pool.tick_spacing),
             };
-            let reached_limit = match x_to_y {
-                true => pool.current_tick_index <= global_edge_tick,
-                false => pool.current_tick_index >= global_edge_tick,
-            };
-            if reached_limit {
+            if reached_tick_limit {
                 global_insufficient_liquidity = true;
                 break;
             }
