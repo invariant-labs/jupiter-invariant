@@ -106,6 +106,81 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_usdc_wol() {
+        use anchor_lang::prelude::*;
+        use solana_client::rpc_client::RpcClient;
+
+        const USDC_WSOL_MARKET: Pubkey = pubkey!("3vRuk97EaKACp1Z337PvVWNdab57hbDwefdi1zoUg46D");
+        const USDC: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+        const WSOL: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
+        let rpc_url = std::env::args()
+            .filter(|arg| arg.starts_with("rpc="))
+            .map(|arg| arg.split_at(4).1.to_string())
+            .next()
+            .unwrap_or_else(|| RPC_MAINNET_CLINET.to_string());
+        let rpc = RpcClient::new(rpc_url);
+        let mut input_mint = (USDC, stringify!(USDC));
+        let mut output_mint = (WSOL, stringify!(WSOL));
+        if let Some(_) = std::env::args().find(|arg| arg.starts_with("dir=reversed")) {
+            (input_mint, output_mint) = (output_mint, input_mint);
+        }
+
+        let pool_account = rpc.get_account(&USDC_WSOL_MARKET).unwrap();
+
+        let market_account = KeyedAccount {
+            key: USDC_WSOL_MARKET,
+            account: pool_account,
+            params: None,
+        };
+
+        // create JupiterInvariant
+        let mut jupiter_invariant =
+            JupiterInvariant::new_from_keyed_account(&market_account).unwrap();
+
+        // update market data
+        let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+        let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
+        jupiter_invariant.update(&accounts_map).unwrap();
+
+        let mut accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
+        // update once again due to fetch accounts on a non-initialized tickmap.
+        while accounts_outdated {
+            let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+            let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
+            jupiter_invariant.update(&accounts_map).unwrap();
+            accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
+        }
+
+        let quote = QuoteParams {
+            in_amount: 1000 * 10u64.pow(9),
+            input_mint: input_mint.0,
+            output_mint: output_mint.0,
+        };
+        let result = jupiter_invariant.quote(&quote).unwrap();
+
+        println!("insufficient liquidity: {:?}", result.not_enough_liquidity);
+        println!(
+            "input amount: {:.6} {}",
+            result.in_amount as f64 / 10u64.pow(6) as f64,
+            input_mint.1
+        );
+        println!(
+            "output amount: {:.6} {}",
+            result.out_amount as f64 / 10u64.pow(6) as f64,
+            output_mint.1
+        );
+        println!(
+            "fee amount: {:.6} {}",
+            result.fee_amount as f64 / 10u64.pow(6) as f64,
+            input_mint.1
+        );
+        println!(
+            "price impact: {:.6} %",
+            result.price_impact_pct.to_f64().unwrap() * 100.0
+        );
+    }
+
     #[ignore = "devnet only test"]
     #[test]
     fn test_fetch_all_pool() {

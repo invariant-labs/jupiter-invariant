@@ -5,7 +5,7 @@ use invariant_types::{
     log::get_tick_at_sqrt_price,
     math::{
         compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price,
-        is_enough_amount_to_push_price,
+        is_enough_amount_to_push_price, get_max_tick, get_min_tick,
     },
     structs::TICK_CROSSES_PER_IX,
     MAX_VIRTUAL_CROSS,
@@ -157,6 +157,14 @@ impl JupiterInvariant {
             total_fee_amount += result.fee_amount;
 
             if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
+                global_insufficient_liquidity = true;
+                break;
+            }
+            let reached_tick_limit = match x_to_y {
+                true => pool.current_tick_index <= get_min_tick(pool.tick_spacing),
+                false => pool.current_tick_index >= get_max_tick(pool.tick_spacing),
+            };
+            if reached_tick_limit {
                 global_insufficient_liquidity = true;
                 break;
             }
