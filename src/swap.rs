@@ -5,7 +5,7 @@ use invariant_types::{
     log::get_tick_at_sqrt_price,
     math::{
         compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price,
-        is_enough_amount_to_push_price,
+        is_enough_amount_to_push_price, get_max_tick, get_min_tick,
     },
     structs::TICK_CROSSES_PER_IX,
     MAX_VIRTUAL_CROSS,
@@ -161,6 +161,19 @@ impl JupiterInvariant {
                 break;
             }
 
+            let global_edge_tick = match x_to_y {
+                true => get_min_tick(pool.tick_spacing),
+                false => get_max_tick(pool.tick_spacing),
+            };
+            let reached_limit = match x_to_y {
+                true => pool.current_tick_index <= global_edge_tick,
+                false => pool.current_tick_index >= global_edge_tick,
+            };
+            if reached_limit {
+                global_insufficient_liquidity = true;
+                break;
+            }
+
             // crossing tick
             if result.next_price_sqrt == swap_limit && limiting_tick.is_some() {
                 let (tick_index, initialized) = limiting_tick.unwrap();
@@ -198,17 +211,7 @@ impl JupiterInvariant {
                         remaining_amount = TokenAmount(0);
                     }
                 } else {
-                    virtual_cross_counter = match virtual_cross_counter.checked_add(1) {
-                        Some(v) => v,
-                        None => {
-                            break;
-                        }
-                    };
-                    if ticks.len() as u16 + virtual_cross_counter
-                        > MAX_VIRTUAL_CROSS + TICK_CROSSES_PER_IX as u16
-                    {
-                        break;
-                    }
+                    virtual_cross_counter += 1;
                 }
 
                 pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
@@ -227,17 +230,7 @@ impl JupiterInvariant {
                 }
                 pool.current_tick_index =
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
-                virtual_cross_counter = match virtual_cross_counter.checked_add(1) {
-                    Some(v) => v,
-                    None => {
-                        break;
-                    }
-                };
-                if ticks.len() as u16 + virtual_cross_counter
-                    > MAX_VIRTUAL_CROSS + TICK_CROSSES_PER_IX as u16
-                {
-                    break;
-                }
+                virtual_cross_counter += 1;
             }
         }
         Ok(InvariantSwapResult {

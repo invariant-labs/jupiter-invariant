@@ -1295,7 +1295,7 @@ checksum = "23d8666cb01533c39dde32bcbab8e227b4ed6679b2c925eba05feabea39508fb"
 [[package]]
 name = "decimal"
 version = "0.1.0"
-source = "git+https://github.com/invariant-labs/protocol.git?branch=master#1aca591312d64856ed47d3446d804f2570c945a3"
+source = "git+https://github.com/invariant-labs/protocol.git?branch=master#a36e2fc3e2effefb777a4ed754779f35db62ded6"
 dependencies = [
  "decimal_core",
  "integer-sqrt",
@@ -1306,7 +1306,7 @@ dependencies = [
 [[package]]
 name = "decimal_core"
 version = "0.1.0"
-source = "git+https://github.com/invariant-labs/protocol.git?branch=master#1aca591312d64856ed47d3446d804f2570c945a3"
+source = "git+https://github.com/invariant-labs/protocol.git?branch=master#a36e2fc3e2effefb777a4ed754779f35db62ded6"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.26",
@@ -2062,7 +2062,7 @@ dependencies = [
 [[package]]
 name = "invariant-types"
 version = "0.1.0"
-source = "git+https://github.com/invariant-labs/protocol.git?branch=master#1aca591312d64856ed47d3446d804f2570c945a3"
+source = "git+https://github.com/invariant-labs/protocol.git?branch=master#a36e2fc3e2effefb777a4ed754779f35db62ded6"
 dependencies = [
  "anchor-lang",
  "borsh 0.9.3",
