@@ -107,7 +107,7 @@ mod tests {
     }
 
     #[test]
-    fn test_jupiter_invariant_2() {
+    fn test_usdc_wol() {
         use anchor_lang::prelude::*;
         use solana_client::rpc_client::RpcClient;
 
