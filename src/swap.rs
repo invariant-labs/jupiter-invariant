@@ -212,7 +212,7 @@ impl JupiterInvariant {
                 } else {
                     virtual_cross_counter += 1;
                     if InvariantSwapResult::break_swap_loop_early(
-                        ticks.len() as u16,
+                        crossed_ticks.len() as u16,
                         virtual_cross_counter,
                     ) {
                         global_insufficient_liquidity = true;
@@ -238,7 +238,7 @@ impl JupiterInvariant {
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
                 virtual_cross_counter += 1;
                 if InvariantSwapResult::break_swap_loop_early(
-                    ticks.len() as u16,
+                    crossed_ticks.len() as u16,
                     virtual_cross_counter,
                 ) {
                     global_insufficient_liquidity = true;
