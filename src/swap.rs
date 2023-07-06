@@ -4,8 +4,8 @@ use invariant_types::{
     decimals::{Decimal, Price, TokenAmount},
     log::get_tick_at_sqrt_price,
     math::{
-        compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_min_sqrt_price,
-        is_enough_amount_to_push_price, get_max_tick, get_min_tick,
+        compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_max_tick,
+        get_min_sqrt_price, get_min_tick, is_enough_amount_to_push_price,
     },
     structs::TICK_CROSSES_PER_IX,
     MAX_VIRTUAL_CROSS,
@@ -38,6 +38,10 @@ impl InvariantSwapResult {
     pub fn is_not_enough_liquidity(&self) -> bool {
         // since "is_referral" is not specified in the quote parameters, we pessimistically assume that the referral is always used
         self.ticks_accounts_outdated || self.is_not_enough_liquidity_referral(true)
+    }
+
+    pub fn break_swap_loop_early(ticks_crossed: u16, virtual_ticks_crossed: u16) -> bool {
+        ticks_crossed + virtual_ticks_crossed > MAX_VIRTUAL_CROSS + TICK_CROSSES_PER_IX as u16
     }
 
     fn is_exceeded_cu_referral(&self, is_referral: bool) -> bool {
@@ -207,6 +211,13 @@ impl JupiterInvariant {
                     }
                 } else {
                     virtual_cross_counter += 1;
+                    if InvariantSwapResult::break_swap_loop_early(
+                        ticks.len() as u16,
+                        virtual_cross_counter,
+                    ) {
+                        global_insufficient_liquidity = true;
+                        break;
+                    }
                 }
 
                 pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
@@ -226,6 +237,13 @@ impl JupiterInvariant {
                 pool.current_tick_index =
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
                 virtual_cross_counter += 1;
+                if InvariantSwapResult::break_swap_loop_early(
+                    ticks.len() as u16,
+                    virtual_cross_counter,
+                ) {
+                    global_insufficient_liquidity = true;
+                    break;
+                }
             }
         }
         Ok(InvariantSwapResult {
