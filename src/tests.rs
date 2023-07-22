@@ -3,6 +3,7 @@ mod tests {
     use std::{collections::HashMap, str::FromStr};
 
     use anchor_lang::prelude::Pubkey;
+    use invariant_types::utils::get_pool_address;
     use jupiter_core::amm::{Amm, KeyedAccount, QuoteParams, SwapParams};
     use rust_decimal::prelude::ToPrimitive;
     use solana_client::rpc_client::RpcClient;
@@ -11,6 +12,102 @@ mod tests {
     use crate::JupiterInvariant;
 
     const RPC_MAINNET_CLINET: &str = "https://api.mainnet-beta.solana.com";
+
+    #[test]
+    fn msol_sol_test() {
+        use anchor_lang::prelude::*;
+        use solana_client::rpc_client::RpcClient;
+
+        const MSOL: Pubkey = pubkey!("mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So");
+        const WSOL: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
+        let msol_wsol_market: Pubkey = get_pool_address(MSOL, WSOL, 100000000, 1);
+        const WSOL_TO_MSOL: bool = true;
+
+        let rpc_url = std::env::args()
+            .filter(|arg| arg.starts_with("rpc="))
+            .map(|arg| arg.split_at(4).1.to_string())
+            .next()
+            .unwrap_or_else(|| RPC_MAINNET_CLINET.to_string());
+        let rpc: RpcClient = RpcClient::new(rpc_url);
+        let mut input_mint = (MSOL, stringify!(MSOL), 9);
+        let mut output_mint = (WSOL, stringify!(WSOL), 9);
+        if WSOL_TO_MSOL {
+            (input_mint, output_mint) = (output_mint, input_mint);
+        }
+
+        let pool_account = rpc.get_account(&msol_wsol_market).unwrap();
+
+        let market_account = KeyedAccount {
+            key: msol_wsol_market,
+            account: pool_account,
+            params: None,
+        };
+
+        // create JupiterInvariant
+        let mut jupiter_invariant =
+            JupiterInvariant::new_from_keyed_account(&market_account).unwrap();
+
+        // update market data
+        let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+        let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
+        jupiter_invariant.update(&accounts_map).unwrap();
+
+        let mut accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
+        // update once again due to fetch accounts on a non-initialized tickmap.
+        while accounts_outdated {
+            let accounts_to_update = jupiter_invariant.get_accounts_to_update();
+            let accounts_map = JupiterInvariant::fetch_accounts(&rpc, accounts_to_update);
+            jupiter_invariant.update(&accounts_map).unwrap();
+            accounts_outdated = jupiter_invariant.ticks_accounts_outdated();
+        }
+
+        let quote = QuoteParams {
+            in_amount: 3 * 10u64.pow(9),
+            input_mint: input_mint.0,
+            output_mint: output_mint.0,
+        };
+        let result = jupiter_invariant.quote(&quote).unwrap();
+
+        println!("insufficient liquidity: {:?}", result.not_enough_liquidity);
+        println!(
+            "input amount: {:.6} {}",
+            result.in_amount as f64 / 10u64.pow(input_mint.2) as f64,
+            input_mint.1
+        );
+        println!(
+            "output amount: {:.6} {}",
+            result.out_amount as f64 / 10u64.pow(output_mint.2) as f64,
+            output_mint.1
+        );
+        println!(
+            "fee amount: {:.6} {}",
+            result.fee_amount as f64 / 10u64.pow(input_mint.2) as f64,
+            input_mint.1
+        );
+        println!(
+            "price impact: {:.6} %",
+            result.price_impact_pct.to_f64().unwrap() * 100.0
+        );
+
+        match jupiter_invariant.get_swap_leg_and_account_metas(&SwapParams {
+            source_mint: quote.input_mint,
+            destination_mint: quote.output_mint,
+            user_destination_token_account: Pubkey::new_unique(),
+            user_source_token_account: Pubkey::new_unique(),
+            user_transfer_authority: Pubkey::new_unique(),
+            open_order_address: None,
+            quote_mint_to_referrer: Some(HashMap::from([(quote.input_mint, Pubkey::new_unique())])),
+            in_amount: quote.in_amount,
+        }) {
+            Ok(_) => {
+                println!("Metas created successfully");
+            }
+            Err(err) => {
+                println!("Cannot create metas for invalid swap parameters");
+                println!("{}", err);
+            }
+        }
+    }
 
     #[test]
     fn test_jupiter_invariant() {
