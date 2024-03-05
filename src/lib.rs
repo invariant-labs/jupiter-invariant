@@ -90,6 +90,14 @@ impl Amm for JupiterInvariant {
     }
 
     fn quote(&self, quote_params: &QuoteParams) -> anyhow::Result<Quote> {
+        let accounts_outdated = self.ticks_accounts_outdated();
+        if accounts_outdated {
+            return Ok(Quote {
+                not_enough_liquidity: true,
+                ..Quote::default()
+            });
+        }
+
         let invariant_simulation_params = self.quote_to_invariant_params(quote_params)?;
         let simulation_result = self.simulate_invariant_swap(&invariant_simulation_params);
 
