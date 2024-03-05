@@ -107,7 +107,7 @@ impl JupiterInvariant {
             by_amount_in,
         } = *invariant_simulation_params;
 
-        let (mut pool, ticks, tickmap, starting_sqrt_price) = (
+        let (pool, ticks, tickmap, starting_sqrt_price) = (
             &mut self.pool.clone(),
             &self.ticks.clone(),
             &self.tickmap.clone(),
