@@ -202,8 +202,11 @@ impl JupiterInvariant {
 
                     // crossing tick
                     if !x_to_y || is_enough_amount_to_cross {
-                        cross_tick(&mut tick, pool)
-                            .map_err(|_| "Internal Invariant Error: Cross tick".to_string())?;
+                        let cross_tick_result = cross_tick(&mut tick, pool);
+                        if cross_tick_result.is_err() {
+                            global_insufficient_liquidity = true;
+                            break;
+                        }
                         crossed_ticks.push(tick.index);
                     } else if !remaining_amount.is_zero() {
                         total_amount_in += remaining_amount;
