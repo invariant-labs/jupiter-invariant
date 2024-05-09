@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use invariant_types::{
-    decimals::{Decimal, Price, TokenAmount},
+    decimals::{CheckedOps, Decimal, Price, TokenAmount},
     log::get_tick_at_sqrt_price,
     math::{
         compute_swap_step, cross_tick, get_closer_limit, get_max_sqrt_price, get_max_tick,
@@ -40,8 +40,14 @@ impl InvariantSwapResult {
         self.ticks_accounts_outdated || self.is_not_enough_liquidity_referral(true)
     }
 
-    pub fn break_swap_loop_early(ticks_crossed: u16, virtual_ticks_crossed: u16) -> bool {
-        ticks_crossed + virtual_ticks_crossed > MAX_VIRTUAL_CROSS + TICK_CROSSES_PER_IX as u16
+    pub fn break_swap_loop_early(
+        ticks_crossed: u16,
+        virtual_ticks_crossed: u16,
+    ) -> Result<bool, String> {
+        Ok(ticks_crossed
+            .checked_add(virtual_ticks_crossed)
+            .ok_or_else(|| "virtual ticks crossed + ticks crossed overflow")?
+            > MAX_VIRTUAL_CROSS + TICK_CROSSES_PER_IX as u16)
     }
 
     fn is_exceeded_cu_referral(&self, is_referral: bool) -> bool {
@@ -76,8 +82,10 @@ impl JupiterInvariant {
         let x_to_y = input_mint.eq(&self.pool.token_x);
         let sqrt_price_limit: Price = if x_to_y {
             get_min_sqrt_price(self.pool.tick_spacing)
+                .map_err(|_| anyhow::anyhow!("failed to calculate min price"))?
         } else {
             get_max_sqrt_price(self.pool.tick_spacing)
+                .map_err(|_| anyhow::anyhow!("failed to calculate min price"))?
         };
 
         let (expected_input_mint, expected_output_mint) = if x_to_y {
@@ -154,19 +162,28 @@ impl JupiterInvariant {
                 formatted
             })?;
 
-            remaining_amount -= result.amount_in + result.fee_amount;
+            remaining_amount =
+                remaining_amount.checked_sub(result.amount_in.checked_add(result.fee_amount)?)?;
             pool.sqrt_price = result.next_price_sqrt;
-            total_amount_in += result.amount_in + result.fee_amount;
-            total_amount_out += result.amount_out;
-            total_fee_amount += result.fee_amount;
+            total_amount_in = total_amount_in
+                .checked_add(result.amount_in)?
+                .checked_add(result.fee_amount)?;
+            total_amount_out = total_amount_out.checked_add(result.amount_out)?;
+            total_fee_amount = total_fee_amount.checked_add(result.fee_amount)?;
 
             if { pool.sqrt_price } == sqrt_price_limit && !remaining_amount.is_zero() {
                 global_insufficient_liquidity = true;
                 break;
             }
             let reached_tick_limit = match x_to_y {
-                true => pool.current_tick_index <= get_min_tick(pool.tick_spacing),
-                false => pool.current_tick_index >= get_max_tick(pool.tick_spacing),
+                true => {
+                    pool.current_tick_index
+                        <= get_min_tick(pool.tick_spacing).map_err(|err| err.cause)?
+                }
+                false => {
+                    pool.current_tick_index
+                        >= get_max_tick(pool.tick_spacing).map_err(|err| err.cause)?
+                }
             };
             if reached_tick_limit {
                 global_insufficient_liquidity = true;
@@ -209,22 +226,27 @@ impl JupiterInvariant {
                         }
                         crossed_ticks.push(tick.index);
                     } else if !remaining_amount.is_zero() {
-                        total_amount_in += remaining_amount;
+                        total_amount_in
+                            .checked_add(remaining_amount)
+                            .map_err(|_| "add overflow")?;
                         remaining_amount = TokenAmount(0);
                     }
                 } else {
-                    virtual_cross_counter += 1;
+                    virtual_cross_counter.checked_add(1).ok_or("add overflow")?;
                     if InvariantSwapResult::break_swap_loop_early(
                         crossed_ticks.len() as u16,
                         virtual_cross_counter,
-                    ) {
+                    )?
+                    {
                         global_insufficient_liquidity = true;
                         break;
                     }
                 }
 
                 pool.current_tick_index = if x_to_y && is_enough_amount_to_cross {
-                    tick_index.checked_sub(pool.tick_spacing as i32).unwrap()
+                    tick_index
+                        .checked_sub(pool.tick_spacing as i32)
+                        .ok_or("sub overflow")?
                 } else {
                     tick_index
                 };
@@ -239,11 +261,14 @@ impl JupiterInvariant {
                 }
                 pool.current_tick_index =
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
-                virtual_cross_counter += 1;
+                //
+                virtual_cross_counter =
+                    virtual_cross_counter.checked_add(1).ok_or("add overflow")?;
                 if InvariantSwapResult::break_swap_loop_early(
                     crossed_ticks.len() as u16,
                     virtual_cross_counter,
-                ) {
+                )?
+                {
                     global_insufficient_liquidity = true;
                     break;
                 }
