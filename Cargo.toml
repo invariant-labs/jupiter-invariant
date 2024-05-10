@@ -19,3 +19,6 @@ invariant-types = { git = "https://github.com/invariant-labs/protocol.git", bran
 anchor-lang = "0.26.0"
 borsh = {version = "*", features = ["const-generics"]}
 rust_decimal = "1.30.0"
+
+[features]
+strict = []

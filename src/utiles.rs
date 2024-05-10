@@ -38,7 +38,7 @@ impl JupiterInvariant {
             .enumerate()
             .fold(HashMap::new(), |mut m, (index, account)| {
                 if let Some(account) = account {
-                    m.insert(accounts_to_update[index], account.data.clone());
+                    let _ = m.insert(accounts_to_update[index], account.data.clone());
                 }
                 m
             })

@@ -17,8 +17,8 @@ jobs:
         uses: actions/checkout@v2
       - name: Build and test with Rust latest
         run: |
-          cargo build --verbose
-          cargo test --verbose
+          cargo build --verbose --features strict
+          cargo test --verbose --features strict
 
   rust-nightly:
     runs-on: ubuntu-latest
@@ -28,5 +28,5 @@ jobs:
         uses: actions/checkout@v2
       - name: Build and test with Rust nightly
         run: |
-          cargo build --verbose
-          cargo test --verbose
+          cargo build --verbose --features strict
+          cargo test --verbose --features strict
