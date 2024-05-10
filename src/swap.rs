@@ -85,7 +85,7 @@ impl JupiterInvariant {
                 .map_err(|_| anyhow::anyhow!("failed to calculate min price"))?
         } else {
             get_max_sqrt_price(self.pool.tick_spacing)
-                .map_err(|_| anyhow::anyhow!("failed to calculate min price"))?
+                .map_err(|_| anyhow::anyhow!("failed to calculate max price"))?
         };
 
         let (expected_input_mint, expected_output_mint) = if x_to_y {
@@ -226,7 +226,7 @@ impl JupiterInvariant {
                         }
                         crossed_ticks.push(tick.index);
                     } else if !remaining_amount.is_zero() {
-                        total_amount_in
+                        total_amount_in = total_amount_in
                             .checked_add(remaining_amount)
                             .map_err(|_| "add overflow")?;
                         remaining_amount = TokenAmount(0);
@@ -261,7 +261,6 @@ impl JupiterInvariant {
                 }
                 pool.current_tick_index =
                     get_tick_at_sqrt_price(result.next_price_sqrt, pool.tick_spacing);
-                //
                 virtual_cross_counter =
                     virtual_cross_counter.checked_add(1).ok_or("add overflow")?;
                 if InvariantSwapResult::break_swap_loop_early(
