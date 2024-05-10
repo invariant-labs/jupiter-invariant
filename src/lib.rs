@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "strict", deny(unused_results))]
+
 use std::collections::HashMap;
 
 use anchor_lang::prelude::*;
