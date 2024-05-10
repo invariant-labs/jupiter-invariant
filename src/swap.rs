@@ -232,12 +232,12 @@ impl JupiterInvariant {
                         remaining_amount = TokenAmount(0);
                     }
                 } else {
-                    virtual_cross_counter.checked_add(1).ok_or("add overflow")?;
+                    virtual_cross_counter =
+                        virtual_cross_counter.checked_add(1).ok_or("add overflow")?;
                     if InvariantSwapResult::break_swap_loop_early(
                         crossed_ticks.len() as u16,
                         virtual_cross_counter,
-                    )?
-                    {
+                    )? {
                         global_insufficient_liquidity = true;
                         break;
                     }
@@ -267,8 +267,7 @@ impl JupiterInvariant {
                 if InvariantSwapResult::break_swap_loop_early(
                     crossed_ticks.len() as u16,
                     virtual_cross_counter,
-                )?
-                {
+                )? {
                     global_insufficient_liquidity = true;
                     break;
                 }
