@@ -28,7 +28,7 @@ pub struct InvariantSwapResult {
     pub fee_amount: u64,
     pub starting_sqrt_price: Price,
     pub ending_sqrt_price: Price,
-    pub crossed_ticks: Vec<i32>,
+    pub used_ticks: Vec<i32>,
     pub virtual_cross_counter: u16,
     pub global_insufficient_liquidity: bool,
     pub ticks_accounts_outdated: bool,
@@ -51,7 +51,7 @@ impl InvariantSwapResult {
     }
 
     fn is_exceeded_cu_referral(&self, is_referral: bool) -> bool {
-        let crossed_amount = self.crossed_ticks.len();
+        let crossed_amount = self.used_ticks.len();
         let mut max_cross = TICK_CROSSES_PER_IX;
         if is_referral {
             max_cross -= 1;
@@ -128,7 +128,7 @@ impl JupiterInvariant {
             TokenAmount::new(0),
         );
         let (
-            mut crossed_ticks,
+            mut used_ticks,
             mut virtual_cross_counter,
             mut global_insufficient_liquidity,
             mut ticks_accounts_outdated,
@@ -209,7 +209,10 @@ impl JupiterInvariant {
                 if initialized {
                     let tick_address = self.tick_index_to_address(tick_index);
                     let tick = match ticks.get(&tick_address) {
-                        Some(tick) => RefCell::new(*tick),
+                        Some(tick) => {
+                            used_ticks.push(tick.index);
+                            RefCell::new(*tick)
+                        },
                         None => {
                             ticks_accounts_outdated = true;
                             break;
@@ -224,7 +227,6 @@ impl JupiterInvariant {
                             global_insufficient_liquidity = true;
                             break;
                         }
-                        crossed_ticks.push(tick.index);
                     } else if !remaining_amount.is_zero() {
                         total_amount_in = total_amount_in
                             .checked_add(remaining_amount)
@@ -235,7 +237,7 @@ impl JupiterInvariant {
                     virtual_cross_counter =
                         virtual_cross_counter.checked_add(1).ok_or("add overflow")?;
                     if InvariantSwapResult::break_swap_loop_early(
-                        crossed_ticks.len() as u16,
+                        used_ticks.len() as u16,
                         virtual_cross_counter,
                     )? {
                         global_insufficient_liquidity = true;
@@ -264,7 +266,7 @@ impl JupiterInvariant {
                 virtual_cross_counter =
                     virtual_cross_counter.checked_add(1).ok_or("add overflow")?;
                 if InvariantSwapResult::break_swap_loop_early(
-                    crossed_ticks.len() as u16,
+                    used_ticks.len() as u16,
                     virtual_cross_counter,
                 )? {
                     global_insufficient_liquidity = true;
@@ -278,7 +280,7 @@ impl JupiterInvariant {
             fee_amount: total_fee_amount.0,
             starting_sqrt_price,
             ending_sqrt_price: pool.sqrt_price,
-            crossed_ticks,
+            used_ticks,
             virtual_cross_counter,
             global_insufficient_liquidity,
             ticks_accounts_outdated,

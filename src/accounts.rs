@@ -58,7 +58,7 @@ impl InvariantSwapAccounts {
         };
         // possibility update: add one tick in the opposite direction to swap direction
         let ticks_accounts =
-            jupiter_invariant.tick_indexes_to_addresses(&invariant_swap_result.crossed_ticks);
+            jupiter_invariant.tick_indexes_to_addresses(&invariant_swap_result.used_ticks);
 
         let invariant_swap_accounts = Self {
             state: Self::get_state_address(jupiter_invariant.program_id),
